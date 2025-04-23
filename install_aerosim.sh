@@ -31,15 +31,15 @@ INSTALL_SCRIPT_PATH="$(realpath "$(dirname "$BASH_SOURCE")")"
 # Repository URLs and Git Prefix
 # ----------------------------------
 GIT_CLONE_PREFIX="https://github.com/"
-AEROSIM_REPO_URL="aerosim-open/aerosim.git"
-AEROSIM_UNREAL_PROJECT_REPO_URL="aerosim-open/aerosim-unreal-project.git"
-AEROSIM_UNREAL_PLUGIN_URL="aerosim-open/aerosim-unreal-plugin.git"
-AEROSIM_OMNIVERSE_KIT_APP_URL="aerosim-open/aerosim-omniverse-kit-app.git"
-AEROSIM_OMNIVERSE_EXTENSION_URL="aerosim-open/aerosim-omniverse-extension.git"
-AEROSIM_ASSETS_REPO_URL="aerosim-open/aerosim-assets.git"
-AEROSIM_ASSETS_UNREAL_REPO_URL="aerosim-open/aerosim-assets-unreal.git"
-AEROSIM_SIMULINK_REPO_URL="aerosim-open/aerosim-simulink.git"
-AEROSIM_APP_REPO_URL="aerosim-open/aerosim-app.git"
+AEROSIM_REPO_URL="edufford/aerosim.git"
+AEROSIM_UNREAL_PROJECT_REPO_URL="edufford/aerosim-unreal-project.git"
+AEROSIM_UNREAL_PLUGIN_URL="edufford/aerosim-unreal-plugin.git"
+AEROSIM_OMNIVERSE_KIT_APP_URL="edufford/aerosim-omniverse-kit-app.git"
+AEROSIM_OMNIVERSE_EXTENSION_URL="edufford/aerosim-omniverse-extension.git"
+AEROSIM_ASSETS_REPO_URL="edufford/aerosim-assets.git"
+AEROSIM_ASSETS_UNREAL_REPO_URL="edufford/aerosim-assets-unreal.git"
+AEROSIM_SIMULINK_REPO_URL="edufford/aerosim-simulink.git"
+AEROSIM_APP_REPO_URL="edufford/aerosim-app.git"
 
 # ----------------------------------
 # Help Function

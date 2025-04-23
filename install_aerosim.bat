@@ -45,15 +45,15 @@ if "!INSTALL_SCRIPT_PATH:~-1!"=="\" set "INSTALL_SCRIPT_PATH=!INSTALL_SCRIPT_PAT
 
 :: Repository URLs and flags
 set "GIT_CLONE_PREFIX=https://github.com/"
-set "AEROSIM_REPO_URL=aerosim-open/aerosim.git"
-set "AEROSIM_UNREAL_PROJECT_REPO_URL=aerosim-open/aerosim-unreal-project.git"
-set "AEROSIM_UNREAL_PLUGIN_URL=aerosim-open/aerosim-unreal-plugin.git"
-set "AEROSIM_OMNIVERSE_KIT_APP_URL=aerosim-open/aerosim-omniverse-kit-app.git"
-set "AEROSIM_OMNIVERSE_EXTENSION_URL=aerosim-open/aerosim-omniverse-extension.git"
-set "AEROSIM_ASSETS_REPO_URL=aerosim-open/aerosim-assets.git"
-set "AEROSIM_ASSETS_UNREAL_REPO_URL=aerosim-open/aerosim-assets-unreal.git"
-set "AEROSIM_SIMULINK_REPO_URL=aerosim-open/aerosim-simulink.git"
-set "AEROSIM_APP_REPO_URL=aerosim-open/aerosim-app.git"
+set "AEROSIM_REPO_URL=edufford/aerosim.git"
+set "AEROSIM_UNREAL_PROJECT_REPO_URL=edufford/aerosim-unreal-project.git"
+set "AEROSIM_UNREAL_PLUGIN_URL=edufford/aerosim-unreal-plugin.git"
+set "AEROSIM_OMNIVERSE_KIT_APP_URL=edufford/aerosim-omniverse-kit-app.git"
+set "AEROSIM_OMNIVERSE_EXTENSION_URL=edufford/aerosim-omniverse-extension.git"
+set "AEROSIM_ASSETS_REPO_URL=edufford/aerosim-assets.git"
+set "AEROSIM_ASSETS_UNREAL_REPO_URL=edufford/aerosim-assets-unreal.git"
+set "AEROSIM_SIMULINK_REPO_URL=edufford/aerosim-simulink.git"
+set "AEROSIM_APP_REPO_URL=edufford/aerosim-app.git"
 
 :: If running inside an existing AeroSim repo, adjust working directory.
 if exist "!INSTALL_SCRIPT_PATH!\.git\config" (
