@@ -30,7 +30,7 @@ INSTALL_SCRIPT_PATH="$(realpath "$(dirname "$BASH_SOURCE")")"
 # ----------------------------------
 # Repository URLs and Git Prefix
 # ----------------------------------
-GIT_CLONE_PREFIX="https://github.com/"
+GIT_CLONE_PREFIX="git@github.com:"
 AEROSIM_REPO_URL="edufford/aerosim.git"
 AEROSIM_UNREAL_PROJECT_REPO_URL="edufford/aerosim-unreal-project.git"
 AEROSIM_UNREAL_PLUGIN_URL="edufford/aerosim-unreal-plugin.git"

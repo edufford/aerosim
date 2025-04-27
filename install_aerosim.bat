@@ -44,7 +44,7 @@ set "INSTALL_SCRIPT_PATH=%~dp0"
 if "!INSTALL_SCRIPT_PATH:~-1!"=="\" set "INSTALL_SCRIPT_PATH=!INSTALL_SCRIPT_PATH:~0,-1!"
 
 :: Repository URLs and flags
-set "GIT_CLONE_PREFIX=https://github.com/"
+set "GIT_CLONE_PREFIX=git@github.com:"
 set "AEROSIM_REPO_URL=edufford/aerosim.git"
 set "AEROSIM_UNREAL_PROJECT_REPO_URL=edufford/aerosim-unreal-project.git"
 set "AEROSIM_UNREAL_PLUGIN_URL=edufford/aerosim-unreal-plugin.git"
