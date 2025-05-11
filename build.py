@@ -152,6 +152,13 @@ def main():
                 skip_builds = True
     
     if not skip_builds:
+        if args.wheel:
+            # Clean up wheel output directory before building wheels
+            wheel_path = project_root / "target" / "wheels"
+            run_command(
+                ["rm", "-rf", str(wheel_path)],
+                cwd=wheel_path, verbose=args.verbose
+            )
         total_packages = len(packages)
         for i, package in enumerate(packages):
             print(f"Building package {i+1}/{total_packages} {package}...")
