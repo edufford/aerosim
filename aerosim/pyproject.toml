@@ -1,6 +1,6 @@
 [project]
 name = "aerosim"
-version = "0.0.1"
+version = "0.1.0"
 description = "Main python package for AeroSim"
 authors = [
     { name = "Praveen Palanisamy", email = "4770482+praveen-palanisamy@users.noreply.github.com" },
