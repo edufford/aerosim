@@ -7,4 +7,4 @@ rye sync || exit /b %ERRORLEVEL%
 call .venv\Scripts\activate
 
 @REM Build AeroSim with force flag to ensure aerosim-world-link is always rebuilt
-rye run build -f
+rye run build -f %*
