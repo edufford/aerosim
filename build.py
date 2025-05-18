@@ -166,7 +166,7 @@ def main():
             if package_path.exists():
                 # Build dev packages for .venv local virtual environment
                 run_command(
-                    [str(maturin_path), "develop", "--skip-install", "-m", str(package_path)],
+                    [str(maturin_path), "develop", "--release", "--skip-install", "-m", str(package_path)],
                     cwd=project_root, verbose=args.verbose
                 )
 
