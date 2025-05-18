@@ -155,25 +155,24 @@ def main():
         if args.wheel:
             # Clean up wheel output directory before building wheels
             wheel_path = project_root / "target" / "wheels"
-            run_command(
-                ["rm", "-rf", str(wheel_path)],
-                cwd=wheel_path, verbose=args.verbose
-            )
+            if wheel_path.exists():
+                print(f"Removing {wheel_path}")
+                shutil.rmtree(wheel_path)
         total_packages = len(packages)
         for i, package in enumerate(packages):
             print(f"Building package {i+1}/{total_packages} {package}...")
             package_path = project_root / package / "Cargo.toml"
             if package_path.exists():
-                # Build dev packages for .venv local virtual environment
-                run_command(
-                    [str(maturin_path), "develop", "--release", "--skip-install", "-m", str(package_path)],
-                    cwd=project_root, verbose=args.verbose
-                )
-
                 if args.wheel:
                     # Build release package wheels for distribution
                     run_command(
                         [str(maturin_path), "build", "--release", "-m", str(package_path)],
+                        cwd=project_root, verbose=args.verbose
+                    )
+                else:
+                    # Build dev packages for .venv local virtual environment
+                    run_command(
+                        [str(maturin_path), "develop", "--release", "--skip-install", "-m", str(package_path)],
                         cwd=project_root, verbose=args.verbose
                     )
             else:
