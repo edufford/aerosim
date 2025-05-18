@@ -5,7 +5,12 @@ description = "Main python package for AeroSim"
 authors = [
     { name = "Praveen Palanisamy", email = "4770482+praveen-palanisamy@users.noreply.github.com" },
 ]
-dependencies = []
+dependencies = [
+    "websockets>=15.0.1",
+    "pygame>=2.6.1",
+    "opencv-python>=4.11.0.86",
+    "numpy>=2.2.3",
+]
 readme = "README.md"
 requires-python = ">= 3.12"
 
