@@ -12,4 +12,4 @@ alias python=./.venv/bin/python
 alias python3=./.venv/bin/python3
 
 # Build AeroSim with force flag to ensure aerosim-world-link is always rebuilt
-rye run build -f
+rye run build -f $*
