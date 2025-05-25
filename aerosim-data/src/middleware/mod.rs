@@ -11,6 +11,7 @@ use enum_dispatch::enum_dispatch;
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use pythonize::{depythonize, pythonize};
 use serde::{Deserialize, Serialize};
+use zenoh::ZenohMiddleware;
 
 use crate::types::{AerosimMessage, PyTypeSupport, TimeStamp, TypeRegistry};
 
@@ -19,6 +20,8 @@ pub mod common;
 pub mod dds;
 #[cfg(feature = "kafka")]
 pub mod kafka;
+
+pub mod zenoh;
 
 use common::message;
 pub use common::{Message, Metadata};
@@ -29,6 +32,8 @@ pub use aerosim_macros::AerosimDeserializeEnum;
 pub use dds::{DDSMiddleware, DDSSerializer};
 #[cfg(feature = "kafka")]
 pub use kafka::{BincodeSerializer, KafkaMiddleware, KafkaSerializer};
+
+pub use zenoh::ZenohSerializer;
 
 pub type CallbackClosureRaw = Box<dyn Fn(&[u8]) -> Result<(), Box<dyn Error>> + Send + Sync>;
 pub type CallbackClosure<T> = Box<dyn Fn(T, Metadata) -> Result<(), Box<dyn Error>> + Send + Sync>;
@@ -303,7 +308,10 @@ trait PyMiddleware: Middleware {
                     Some((metadata, pyobject)) => (metadata, pyobject),
                     None => {
                         eprintln!("Could not deserialize data to {}", &type_support.type_name);
-                        return Err(format!("Failed to deserialize data to: {}", &type_support.type_name));
+                        return Err(format!(
+                            "Failed to deserialize data to: {}",
+                            &type_support.type_name
+                        ));
                     }
                 };
                 if let Err(e) = callback.call(py, (pyobject, metadata), None) {
@@ -344,7 +352,10 @@ trait PyMiddleware: Middleware {
                     Some((metadata, pyobject)) => (metadata, pyobject),
                     None => {
                         eprintln!("Could not deserialize data to {}", &type_support.type_name);
-                        return Err(format!("Failed to deserialize data to: {}", &type_support.type_name));
+                        return Err(format!(
+                            "Failed to deserialize data to: {}",
+                            &type_support.type_name
+                        ));
                     }
                 };
                 if let Err(e) = callback.call(py, (pyobject, metadata), None) {
@@ -427,6 +438,7 @@ pub enum MiddlewareEnum {
     DDSMiddleware,
     #[cfg(feature = "kafka")]
     KafkaMiddleware,
+    ZenohMiddleware,
 }
 
 #[enum_dispatch]
@@ -437,6 +449,7 @@ pub enum SerializerEnum {
     KafkaSerializer,
     #[cfg(feature = "kafka")]
     BincodeSerializer,
+    ZenohSerializer,
 }
 
 pub struct MiddlewareRegistry {
@@ -481,6 +494,9 @@ static MIDDLEWARE_REGISTRY: MiddlewareRegistry = {
     #[cfg(feature = "kafka")]
     registry
         .register("kafka", MiddlewareEnum::from(KafkaMiddleware::new()))
+        .ok();
+    registry
+        .register("zenoh", MiddlewareEnum::from(ZenohMiddleware::new()))
         .ok();
     registry
 };
