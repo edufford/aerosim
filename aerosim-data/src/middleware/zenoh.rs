@@ -44,15 +44,10 @@ impl ZenohMiddleware {
 impl MiddlewareRaw for ZenohMiddleware {
     async fn publish_raw(
         &self,
-        message_type: &str,
+        _message_type: &str,
         topic: &str,
         payload: &[u8],
     ) -> Result<(), Box<dyn Error>> {
-        println!(
-            "ZenohMiddleware: publish_raw called with message_type: {}, topic: {}",
-            message_type, topic
-        );
-
         let session = Arc::clone(
             self.session
                 .get_or_init(async || {
@@ -75,15 +70,10 @@ impl MiddlewareRaw for ZenohMiddleware {
 
     async fn subscribe_raw(
         &self,
-        message_type: &str,
+        _message_type: &str,
         topic: &str,
         callback: CallbackClosureRaw,
     ) -> Result<(), Box<dyn Error>> {
-        println!(
-            "ZenohMiddleware: subscribe_raw called with message_type: {}, topic: {}",
-            message_type, topic
-        );
-
         let session = Arc::clone(
             self.session
                 .get_or_init(async || {
@@ -110,13 +100,8 @@ impl MiddlewareRaw for ZenohMiddleware {
     async fn subscribe_all_raw(
         &self,
         topics: Vec<(String, String)>,
-        _callback: CallbackClosureRaw,
+        callback: CallbackClosureRaw,
     ) -> Result<(), Box<dyn Error>> {
-        println!(
-            "ZenohMiddleware: subscribe_all_raw called with topics: {:?}",
-            topics
-        );
-
         let session = Arc::clone(
             self.session
                 .get_or_init(async || {
@@ -129,20 +114,14 @@ impl MiddlewareRaw for ZenohMiddleware {
                 .await,
         );
 
+        let callback_arc = Arc::new(callback);
+
         for (_message_type, topic) in topics {
             let subscriber = session.declare_subscriber(topic).await.unwrap();
-
+            let callback_clone = Arc::clone(&callback_arc);
             task::spawn(async move {
                 while let Ok(sample) = subscriber.recv_async().await {
-                    println!(
-                        "Received: {:?}",
-                        sample
-                            .payload()
-                            .try_to_string()
-                            .expect("Failed to convert payload to string")
-                    );
-                    // TODO Can't move same callback into multiple tasks
-                    // callback(&sample.payload().to_bytes());
+                    let _ = callback_clone(&sample.payload().to_bytes());
                 }
             });
         }

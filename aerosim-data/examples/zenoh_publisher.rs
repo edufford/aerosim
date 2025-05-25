@@ -31,7 +31,7 @@ async fn main() {
     let mut interval = tokio::time::interval(Duration::from_millis(100));
     loop {
         println!("Publishing");
-        let vector = Vector3::new(1.0, 1.0, 1.0);
+        let vector = Vector3::new(1.1, 1.2, 1.3);
         let _ = publish_vector3(registry, &vector).await;
 
         let json = JsonData::new(serde_json::json!({
