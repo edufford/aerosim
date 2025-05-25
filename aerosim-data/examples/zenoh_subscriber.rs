@@ -35,7 +35,7 @@ async fn subscribe_to_json(registry: &MiddlewareRegistry) -> Result<(), Box<dyn 
         .await
 }
 
-async fn subscribe_raw(registry: &MiddlewareRegistry) -> Result<(), Box<dyn Error>> {
+async fn _subscribe_raw(registry: &MiddlewareRegistry) -> Result<(), Box<dyn Error>> {
     let middleware = registry.get("zenoh").unwrap();
     let serializer = middleware.get_serializer();
     middleware
@@ -68,7 +68,7 @@ async fn main() {
     let registry = MiddlewareRegistry::new();
     let _ = subscribe_to_vector3(registry).await;
     let _ = subscribe_to_json(registry).await;
-    let _ = subscribe_raw(registry).await;
+    // let _ = subscribe_raw(registry).await;
 
     let mut interval = tokio::time::interval(Duration::from_secs(1));
     loop {
