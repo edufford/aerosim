@@ -1,7 +1,6 @@
 use std::{error::Error, sync::Arc};
 
 use async_trait::async_trait;
-use bincode;
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -59,7 +58,7 @@ impl MiddlewareRaw for ZenohMiddleware {
     ) -> Result<(), Box<dyn Error>> {
         let session = self
             .session
-            .get_or_init(async || {
+            .get_or_init(|| async {
                 zenoh::open(zenoh::Config::default())
                     .await
                     .expect("Failed to open Zenoh session")
@@ -82,7 +81,7 @@ impl MiddlewareRaw for ZenohMiddleware {
     ) -> Result<(), Box<dyn Error>> {
         let session = self
             .session
-            .get_or_init(async || {
+            .get_or_init(|| async {
                 zenoh::open(zenoh::Config::default())
                     .await
                     .expect("Failed to open Zenoh session")
@@ -107,7 +106,7 @@ impl MiddlewareRaw for ZenohMiddleware {
     ) -> Result<(), Box<dyn Error>> {
         let session = self
             .session
-            .get_or_init(async || {
+            .get_or_init(|| async {
                 zenoh::open(zenoh::Config::default())
                     .await
                     .expect("Failed to open Zenoh session")
