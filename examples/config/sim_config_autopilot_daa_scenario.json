@@ -9,6 +9,66 @@
             {
                 "topic": "aerosim.actor1.vehicle_state",
                 "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.tiltrotor_1.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.tiltrotor_2.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.tiltrotor_3.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.tiltrotor_4.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.tiltrotor_5.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.tiltrotor_6.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.rotor_1.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.rotor_2.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.rotor_3.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.rotor_4.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.rotor_5.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.rotor_6.effector_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.primary_flight_display_data",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.intruder1.vehicle_state",
+                "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.intruder1.propeller.effector_state",
+                "interval_ms": 20
             }
         ]
     },
