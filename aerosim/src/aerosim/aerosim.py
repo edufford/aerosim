@@ -8,7 +8,7 @@ from aerosim_data import middleware
 from aerosim_data import types as aerosim_types
 
 
-class AeroSim:
+class LegacyAeroSim:
     def __init__(self) -> None:
         self.sim_config_json = None
         self.aerosim_orchestrator = None
