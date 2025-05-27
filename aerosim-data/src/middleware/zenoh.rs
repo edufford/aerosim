@@ -33,7 +33,7 @@ impl Serializer for ZenohSerializer {
 
 #[pyclass]
 pub struct ZenohMiddleware {
-    session: tokio::sync::OnceCell<Arc<zenoh::Session>>,
+    session: tokio::sync::OnceCell<zenoh::Session>,
     runtime: Arc<tokio::runtime::Runtime>,
 }
 
@@ -56,17 +56,14 @@ impl MiddlewareRaw for ZenohMiddleware {
         topic: &str,
         payload: &[u8],
     ) -> Result<(), Box<dyn Error>> {
-        let session = Arc::clone(
-            self.session
-                .get_or_init(async || {
-                    Arc::new(
-                        zenoh::open(zenoh::Config::default())
-                            .await
-                            .expect("Failed to open Zenoh session"),
-                    )
-                })
-                .await,
-        );
+        let session = self
+            .session
+            .get_or_init(async || {
+                zenoh::open(zenoh::Config::default())
+                    .await
+                    .expect("Failed to open Zenoh session")
+            })
+            .await;
 
         session
             .put(topic, payload)
@@ -82,17 +79,14 @@ impl MiddlewareRaw for ZenohMiddleware {
         topic: &str,
         callback: CallbackClosureRaw,
     ) -> Result<(), Box<dyn Error>> {
-        let session = Arc::clone(
-            self.session
-                .get_or_init(async || {
-                    Arc::new(
-                        zenoh::open(zenoh::Config::default())
-                            .await
-                            .expect("Failed to open Zenoh session"),
-                    )
-                })
-                .await,
-        );
+        let session = self
+            .session
+            .get_or_init(async || {
+                zenoh::open(zenoh::Config::default())
+                    .await
+                    .expect("Failed to open Zenoh session")
+            })
+            .await;
 
         let subscriber = session.declare_subscriber(topic).await.unwrap();
 
@@ -110,22 +104,19 @@ impl MiddlewareRaw for ZenohMiddleware {
         topics: Vec<(String, String)>,
         callback: CallbackClosureRaw,
     ) -> Result<(), Box<dyn Error>> {
-        let session = Arc::clone(
-            self.session
-                .get_or_init(async || {
-                    Arc::new(
-                        zenoh::open(zenoh::Config::default())
-                            .await
-                            .expect("Failed to open Zenoh session"),
-                    )
-                })
-                .await,
-        );
+        let session = self
+            .session
+            .get_or_init(async || {
+                zenoh::open(zenoh::Config::default())
+                    .await
+                    .expect("Failed to open Zenoh session")
+            })
+            .await;
 
         let callback_arc = Arc::new(callback);
 
         for (_message_type, topic) in topics {
-            let subscriber = session.declare_subscriber(topic).await.unwrap();
+            let subscriber = session.declare_subscriber(&topic).await.unwrap();
             let callback_clone = Arc::clone(&callback_arc);
             task::spawn(async move {
                 while let Ok(sample) = subscriber.recv_async().await {
@@ -163,8 +154,15 @@ impl ZenohMiddleware {
         message: PyObject,
         timestamp_sim: Option<TimeStamp>,
     ) -> PyResult<()> {
-        self.runtime
-            .block_on(self.pypublish_impl(py, topic, message, timestamp_sim))
+        let res = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| {
+                handle.block_on(self.pypublish_impl(py, topic, message, timestamp_sim))
+            }),
+            Err(_) => self
+                .runtime
+                .block_on(self.pypublish_impl(py, topic, message, timestamp_sim)),
+        };
+        res
     }
 
     #[pyo3(name = "subscribe")]
@@ -175,8 +173,16 @@ impl ZenohMiddleware {
         topic: &str,
         callback: PyObject,
     ) -> PyResult<()> {
-        self.runtime
-            .block_on(self.pysubscribe_impl(py, message_type, topic, callback))
+        let res = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| {
+                handle.block_on(self.pysubscribe_impl(py, message_type, topic, callback))
+            }),
+            Err(_) => {
+                self.runtime
+                    .block_on(self.pysubscribe_impl(py, message_type, topic, callback))
+            }
+        };
+        res
     }
 
     #[pyo3(name = "subscribe_all")]
@@ -187,8 +193,16 @@ impl ZenohMiddleware {
         topics: Vec<String>,
         callback: PyObject,
     ) -> PyResult<()> {
-        self.runtime
-            .block_on(self.pysubscribe_all_impl(py, message_type, topics, callback))
+        let res = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| {
+                handle.block_on(self.pysubscribe_all_impl(py, message_type, topics, callback))
+            }),
+            Err(_) => {
+                self.runtime
+                    .block_on(self.pysubscribe_all_impl(py, message_type, topics, callback))
+            }
+        };
+        res
     }
 
     #[pyo3(name = "publish_raw")]
@@ -199,8 +213,16 @@ impl ZenohMiddleware {
         topic: &str,
         payload: Py<pyo3::types::PyBytes>,
     ) -> PyResult<()> {
-        self.runtime
-            .block_on(self.pypublish_raw_impl(py, message_type, topic, payload))
+        let res = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| {
+                handle.block_on(self.pypublish_raw_impl(py, message_type, topic, payload))
+            }),
+            Err(_) => {
+                self.runtime
+                    .block_on(self.pypublish_raw_impl(py, message_type, topic, payload))
+            }
+        };
+        res
     }
 
     #[pyo3(name = "subscribe_raw")]
@@ -211,8 +233,16 @@ impl ZenohMiddleware {
         topic: &str,
         callback: PyObject,
     ) -> PyResult<()> {
-        self.runtime
-            .block_on(self.pysubscribe_raw_impl(py, message_type, topic, callback))
+        let res = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| {
+                handle.block_on(self.pysubscribe_raw_impl(py, message_type, topic, callback))
+            }),
+            Err(_) => {
+                self.runtime
+                    .block_on(self.pysubscribe_raw_impl(py, message_type, topic, callback))
+            }
+        };
+        res
     }
 
     #[pyo3(name = "subscribe_all_raw")]
@@ -222,8 +252,15 @@ impl ZenohMiddleware {
         topics: Vec<(String, String)>,
         callback: PyObject,
     ) -> PyResult<()> {
-        self.runtime
-            .block_on(self.pysubscribe_all_raw_impl(py, topics, callback))
+        let res = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| {
+                handle.block_on(self.pysubscribe_all_raw_impl(py, topics, callback))
+            }),
+            Err(_) => self
+                .runtime
+                .block_on(self.pysubscribe_all_raw_impl(py, topics, callback)),
+        };
+        res
     }
 }
 
