@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 aerosim-core = { path = "../aerosim-core" }
-aerosim-data = { path = "../aerosim-data", features = ["kafka"] }
+aerosim-data = { path = "../aerosim-data", features = ["zenoh"] }
 rdkafka = { version = "0.35.0", features = ["cmake_build"] }
 tokio = { version = "1", features = ["full"] }
 lazy_static = "1.5.0"

@@ -94,7 +94,7 @@ fn _aerosim_data(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     middleware_module.add_class::<middleware::kafka::KafkaMiddleware>()?;
     #[cfg(feature = "dds")]
     middleware_module.add_class::<middleware::dds::DDSMiddleware>()?;
-
+    #[cfg(feature = "zenoh")]
     middleware_module.add_class::<middleware::zenoh::ZenohMiddleware>()?;
 
     #[cfg(feature = "kafka")]
@@ -103,8 +103,10 @@ fn _aerosim_data(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     middleware_module.add_class::<middleware::kafka::BincodeSerializer>()?;
     #[cfg(feature = "dds")]
     middleware_module.add_class::<middleware::dds::DDSSerializer>()?;
-
+    #[cfg(feature = "zenoh")]
     middleware_module.add_class::<middleware::zenoh::ZenohSerializer>()?;
+    #[cfg(feature = "zenoh")]
+    middleware_module.add_class::<middleware::zenoh::BincodeSerializer>()?;
 
     // Add the types submodule to the main module
     m.add_submodule(&middleware_module)?;

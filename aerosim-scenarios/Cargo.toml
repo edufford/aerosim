@@ -15,4 +15,4 @@ pyo3 = { version="0.23.3" }
 strum = { version = "0.26.3", features = ["derive"] }
 strum_macros = "0.26.4"
 lazy_static = "1.5.0"
-aerosim-data = { path = "../aerosim-data" }
+aerosim-data = { path = "../aerosim-data", features = ["zenoh"] }

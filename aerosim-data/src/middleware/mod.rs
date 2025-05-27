@@ -20,7 +20,7 @@ pub mod common;
 pub mod dds;
 #[cfg(feature = "kafka")]
 pub mod kafka;
-
+#[cfg(feature = "zenoh")]
 pub mod zenoh;
 
 use common::message;
@@ -32,8 +32,8 @@ pub use aerosim_macros::AerosimDeserializeEnum;
 pub use dds::{DDSMiddleware, DDSSerializer};
 #[cfg(feature = "kafka")]
 pub use kafka::{BincodeSerializer, KafkaMiddleware, KafkaSerializer};
-
-pub use zenoh::ZenohSerializer;
+#[cfg(feature = "zenoh")]
+pub use zenoh::{BincodeSerializer, ZenohSerializer};
 
 pub type CallbackClosureRaw = Box<dyn Fn(&[u8]) -> Result<(), Box<dyn Error>> + Send + Sync>;
 pub type CallbackClosure<T> = Box<dyn Fn(T, Metadata) -> Result<(), Box<dyn Error>> + Send + Sync>;
@@ -438,6 +438,7 @@ pub enum MiddlewareEnum {
     DDSMiddleware,
     #[cfg(feature = "kafka")]
     KafkaMiddleware,
+    #[cfg(feature = "zenoh")]
     ZenohMiddleware,
 }
 
@@ -447,9 +448,10 @@ pub enum SerializerEnum {
     DDSSerializer,
     #[cfg(feature = "kafka")]
     KafkaSerializer,
-    #[cfg(feature = "kafka")]
-    BincodeSerializer,
+    #[cfg(feature = "zenoh")]
     ZenohSerializer,
+    #[cfg(any(feature = "kafka", feature = "zenoh"))]
+    BincodeSerializer,
 }
 
 pub struct MiddlewareRegistry {
@@ -495,6 +497,7 @@ static MIDDLEWARE_REGISTRY: MiddlewareRegistry = {
     registry
         .register("kafka", MiddlewareEnum::from(KafkaMiddleware::new()))
         .ok();
+    #[cfg(feature = "zenoh")]
     registry
         .register("zenoh", MiddlewareEnum::from(ZenohMiddleware::new()))
         .ok();
