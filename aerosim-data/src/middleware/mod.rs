@@ -11,11 +11,12 @@ use enum_dispatch::enum_dispatch;
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use pythonize::{depythonize, pythonize};
 use serde::{Deserialize, Serialize};
-use zenoh::ZenohMiddleware;
 
 use crate::types::{AerosimMessage, PyTypeSupport, TimeStamp, TypeRegistry};
 
 pub mod common;
+pub mod serializers;
+
 #[cfg(feature = "dds")]
 pub mod dds;
 #[cfg(feature = "kafka")]
@@ -27,13 +28,14 @@ use common::message;
 pub use common::{Message, Metadata};
 
 pub use aerosim_macros::AerosimDeserializeEnum;
+pub use serializers::bincode::BincodeSerializer;
 
 #[cfg(feature = "dds")]
 pub use dds::{DDSMiddleware, DDSSerializer};
 #[cfg(feature = "kafka")]
-pub use kafka::{BincodeSerializer, KafkaMiddleware, KafkaSerializer};
+pub use kafka::{KafkaMiddleware, KafkaSerializer};
 #[cfg(feature = "zenoh")]
-pub use zenoh::{BincodeSerializer, ZenohSerializer};
+pub use zenoh::{ZenohMiddleware, ZenohSerializer};
 
 pub type CallbackClosureRaw = Box<dyn Fn(&[u8]) -> Result<(), Box<dyn Error>> + Send + Sync>;
 pub type CallbackClosure<T> = Box<dyn Fn(T, Metadata) -> Result<(), Box<dyn Error>> + Send + Sync>;
@@ -444,14 +446,13 @@ pub enum MiddlewareEnum {
 
 #[enum_dispatch]
 pub enum SerializerEnum {
+    BincodeSerializer,
     #[cfg(feature = "dds")]
     DDSSerializer,
     #[cfg(feature = "kafka")]
     KafkaSerializer,
     #[cfg(feature = "zenoh")]
     ZenohSerializer,
-    #[cfg(any(feature = "kafka", feature = "zenoh"))]
-    BincodeSerializer,
 }
 
 pub struct MiddlewareRegistry {
