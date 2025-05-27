@@ -143,7 +143,7 @@ impl Orchestrator {
         }
 
         // Load middleware
-        self.middleware = MiddlewareRegistry::new().get("kafka");
+        self.middleware = MiddlewareRegistry::new().get("zenoh");
         let middleware = self
             .middleware
             .as_ref()

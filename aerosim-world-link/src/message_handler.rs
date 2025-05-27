@@ -130,7 +130,7 @@ impl MessageHandler {
             renderer_id: renderer_id.to_string(),
             _sim_config: serde_json::Value::Null,
             runtime: Arc::new(tokio::runtime::Runtime::new().unwrap()),
-            transport: MiddlewareRegistry::new().get("kafka").unwrap(),
+            transport: MiddlewareRegistry::new().get("zenoh").unwrap(),
             payload_queue: Arc::new(Mutex::new(PayloadQueue::new())),
             assigned_sensors: Arc::new(Mutex::new(HashSet::new())),
             thread_handle: None,
@@ -324,7 +324,7 @@ async fn message_handler_main(
     loop {
         match rx_img.try_recv() {
             Ok((topic, image)) => {
-                // TODO: Properly pass `timestamp_sim` and `timestamp_platform` from the renderer. 
+                // TODO: Properly pass `timestamp_sim` and `timestamp_platform` from the renderer.
                 let metadata = Metadata::new(&topic, &CompressedImage::get_type_name(), None, None);
                 let compressed_image = match image.compress() {
                     Ok(compressed_image) => {

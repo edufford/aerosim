@@ -13,7 +13,7 @@ Usage:
 
     Enter "1", "2", or "3" to choose the control mode from the options listed above.
     Use keyboard or joystick inputs with the AeroSim App window active:
-        
+
         For mode 1 using an Xbox controller
             - "Y" button increases power (sets throttle to 100%)
             - "A" button decreases power (sets throttle to 0%)
@@ -27,7 +27,7 @@ Usage:
             - "S" key decreases altitude setpoint (descend)
             - "A" key decreases heading setpoint (turn left)
             - "D" key increases heading setpoint (turn right)
-            
+
         For mode 3 using the keyboard
             - Autopilot control automatically flies the flight plan waypoints specified in example_flight_plan.json
             - No keyboard/joystick control
@@ -232,7 +232,7 @@ class App:
         self.current_altitude = 0
 
         # Set up middleware transport
-        self.transport = middleware.get_transport("kafka")
+        self.transport = middleware.get_transport("zenoh")
         self.fc_cmd_topic = "aerosim.actor1.flight_control_command"
         self.ap_cmd_topic = "aerosim.actor1.autopilot_command"
         # Subscribe to vehicle state topic
