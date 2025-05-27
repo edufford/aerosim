@@ -1410,7 +1410,7 @@
         },
         {
             "id": "evtol_effectors",
-            "fmu_model_path": "fmu/evtol_effectors_fmu_model.fmu",
+            "fmu_model_path": "examples/fmu/evtol_effectors_fmu_model.fmu",
             "component_type": "dynamics_model",
             "component_input_topics": [],
             "component_output_topics": [
@@ -1500,7 +1500,7 @@
         },
         {
             "id": "trajectory_follower_intruder1",
-            "fmu_model_path": "fmu/trajectory_follower_fmu_model.fmu",
+            "fmu_model_path": "examples/fmu/trajectory_follower_fmu_model.fmu",
             "component_input_topics": [],
             "component_output_topics": [
                 {
@@ -1528,7 +1528,7 @@
         },
         {
             "id": "propeller_effector_intruder1",
-            "fmu_model_path": "fmu/rotor_effector_fmu_model.fmu",
+            "fmu_model_path": "examples/fmu/rotor_effector_fmu_model.fmu",
             "component_input_topics": [],
             "component_output_topics": [
                 {
