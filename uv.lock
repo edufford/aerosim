@@ -24,6 +24,20 @@ members = [
 name = "aerosim"
 version = "0.1.0"
 source = { editable = "aerosim" }
+dependencies = [
+    { name = "numpy" },
+    { name = "opencv-python" },
+    { name = "pygame" },
+    { name = "websockets" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.2.3" },
+    { name = "opencv-python", specifier = ">=4.11.0.86" },
+    { name = "pygame", specifier = ">=2.6.1" },
+    { name = "websockets", specifier = ">=11.0.0" },
+]
 
 [[package]]
 name = "aerosim-controllers"
@@ -149,10 +163,6 @@ dependencies = [
     { name = "aerosim-scenarios" },
     { name = "aerosim-sensors" },
     { name = "aerosim-world" },
-    { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "pygame" },
-    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -161,11 +171,7 @@ dev = [
     { name = "maturin" },
     { name = "mcap" },
     { name = "mkdocs" },
-    { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "pygame" },
     { name = "pytest" },
-    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -182,15 +188,7 @@ requires-dist = [
     { name = "maturin", marker = "extra == 'dev'", specifier = ">=1.5,<2.0" },
     { name = "mcap", marker = "extra == 'dev'", specifier = "==1.2.2" },
     { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6.1" },
-    { name = "numpy", specifier = ">=2.2.3" },
-    { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.2.3" },
-    { name = "opencv-python", specifier = ">=4.11.0.86" },
-    { name = "opencv-python", marker = "extra == 'dev'", specifier = ">=4.11.0.86" },
-    { name = "pygame", specifier = ">=2.6.1" },
-    { name = "pygame", marker = "extra == 'dev'", specifier = ">=2.6.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.4" },
-    { name = "websockets", specifier = ">=11.0.0" },
-    { name = "websockets", marker = "extra == 'dev'", specifier = ">=11.0.0" },
 ]
 provides-extras = ["dev"]
 
