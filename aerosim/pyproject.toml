@@ -6,6 +6,13 @@ authors = [
     { name = "Praveen Palanisamy", email = "4770482+praveen-palanisamy@users.noreply.github.com" },
 ]
 dependencies = [
+    "aerosim-controllers>=0.1.0",
+    "aerosim-core>=0.1.0",
+    "aerosim-data>=0.1.0",
+    "aerosim-dynamics-models>=0.1.0",
+    "aerosim-scenarios>=0.1.0",
+    "aerosim-sensors>=0.1.0",
+    "aerosim-world>=0.1.0",
     "websockets>=11.0.0",
     "pygame>=2.6.1",
     "opencv-python>=4.11.0.86",

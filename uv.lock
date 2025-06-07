@@ -25,6 +25,13 @@ name = "aerosim"
 version = "0.1.0"
 source = { editable = "aerosim" }
 dependencies = [
+    { name = "aerosim-controllers" },
+    { name = "aerosim-core" },
+    { name = "aerosim-data" },
+    { name = "aerosim-dynamics-models" },
+    { name = "aerosim-scenarios" },
+    { name = "aerosim-sensors" },
+    { name = "aerosim-world" },
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "pygame" },
@@ -33,6 +40,13 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aerosim-controllers", editable = "aerosim-controllers" },
+    { name = "aerosim-core", editable = "aerosim-core" },
+    { name = "aerosim-data", editable = "aerosim-data" },
+    { name = "aerosim-dynamics-models", editable = "aerosim-dynamics-models" },
+    { name = "aerosim-scenarios", editable = "aerosim-scenarios" },
+    { name = "aerosim-sensors", editable = "aerosim-sensors" },
+    { name = "aerosim-world", editable = "aerosim-world" },
     { name = "numpy", specifier = ">=2.2.3" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "pygame", specifier = ">=2.6.1" },
