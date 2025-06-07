@@ -145,17 +145,39 @@ def main():
                 skip_builds = True
 
     if not skip_builds:
+        if args.wheel:
+            # Clean up wheel output directory before building wheels
+            wheel_path = project_root / "target" / "wheels"
+            if wheel_path.exists():
+                print(f"Removing {wheel_path}")
+                shutil.rmtree(wheel_path)
         total_packages = len(packages)
         for i, package in enumerate(packages):
             print(f"Building package {i+1}/{total_packages} {package}...")
             package_path = project_root / package / "Cargo.toml"
             if package_path.exists():
-                run_command(
-                    [str(maturin_path), "develop", "--release", "--skip-install", "-m", str(package_path)],
-                    cwd=project_root, verbose=args.verbose
-                )
+                if args.wheel:
+                    # Build release package wheels for distribution
+                    run_command(
+                        [str(maturin_path), "build", "--release", "-m", str(package_path)],
+                        cwd=project_root, verbose=args.verbose
+                    )
+                else:
+                    # Build dev packages for .venv local virtual environment
+                    run_command(
+                        [str(maturin_path), "develop", "--release", "--skip-install", "-m", str(package_path)],
+                        cwd=project_root, verbose=args.verbose
+                    )
             else:
                 print(f"Warning: {package_path} does not exist, skipping")
+
+        if args.wheel:
+            # Build aerosim base package wheel for distribution
+            package_path = project_root / "aerosim"
+            run_command(
+                ["uv", "build", "--wheel", "--out", str(project_root / "target" / "wheels")],
+                cwd=package_path, verbose=args.verbose
+            )
     else:
         print("Skipping package builds as wheels already exist (use --force or -f to force rebuild)")
 

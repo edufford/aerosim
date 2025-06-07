@@ -7,4 +7,4 @@ uv sync --no-build --no-install-workspace || exit /b %ERRORLEVEL%
 call .venv\Scripts\activate
 
 @REM Build AeroSim with force flag to ensure aerosim-world-link is always rebuilt
-uv run build.py -f
+uv run build.py -f %*

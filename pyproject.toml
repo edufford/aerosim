@@ -5,7 +5,6 @@ description = "AeroSim workspace root virtual project"
 authors = [
     { name = "Praveen Palanisamy", email = "4770482+praveen-palanisamy@users.noreply.github.com" },
 ]
-
 dependencies = [
     "aerosim",
     "aerosim-controllers",
@@ -15,12 +14,7 @@ dependencies = [
     "aerosim-scenarios",
     "aerosim-sensors",
     "aerosim-world",
-    "websockets>=11.0.0",
-    "pygame>=2.6.1",
-    "opencv-python>=4.11.0.86",
-    "numpy>=2.2.3",
 ]
-
 readme = "README.md"
 requires-python = ">= 3.12"
 
@@ -44,12 +38,8 @@ aerosim-world = { workspace = true }
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.4",
-    "pygame>=2.6.1",
     "mkdocs>=1.6.1",
     "mcap==1.2.2",
-    "websockets>=11.0.0",
     "maturin>=1.5,<2.0",
-    "opencv-python>=4.11.0.86",
-    "numpy>=2.2.3",
     "black>=25.1.0",
 ]
