@@ -1,2 +1,2 @@
 @echo off
-rye build -a --wheel
+uv run build.py --wheel
