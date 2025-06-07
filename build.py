@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Build script for coordinating Rye/UV Python package management with maturin Rust builds.
+"""Build script for coordinating UV Python package management with maturin Rust builds.
 
 This script ensures proper sequencing of dependencies and compilation across the project.
 """
@@ -32,10 +32,10 @@ def run_command(cmd, cwd=None, verbose=False):
         else:
             # Capture output for normal mode
             result = subprocess.run(
-                cmd, 
+                cmd,
                 cwd=cwd,
-                check=True, 
-                text=True, 
+                check=True,
+                text=True,
                 capture_output=True,
                 encoding='utf-8',  # Explicitly set encoding to utf-8
                 errors='replace'   # Replace any invalid characters
@@ -50,23 +50,23 @@ def run_command(cmd, cwd=None, verbose=False):
 def clean_build_artifacts(project_root, verbose=False):
     """Clean up build artifacts."""
     print("Cleaning build artifacts...")
-    
+
     # Clean Rust build artifacts
     run_command(["cargo", "clean"], cwd=project_root, verbose=verbose)
-    
+
     # Clean Python build artifacts
     dist_dir = project_root / "dist"
     if dist_dir.exists():
         print(f"Removing {dist_dir}")
         shutil.rmtree(dist_dir)
-    
+
     # Clean aerosim-world-link artifacts
     world_link_dir = project_root / "aerosim-world-link"
     world_link_lib_dir = world_link_dir / "lib"
     if world_link_lib_dir.exists():
         print(f"Removing {world_link_lib_dir}")
         shutil.rmtree(world_link_lib_dir)
-    
+
     # Clean target directories in all packages
     packages = [
         "aerosim-controllers",
@@ -78,13 +78,13 @@ def clean_build_artifacts(project_root, verbose=False):
         "aerosim-world",
         "aerosim-world-link"
     ]
-    
+
     for package in packages:
         package_target = project_root / package / "target"
         if package_target.exists():
             print(f"Removing {package_target}")
             shutil.rmtree(package_target)
-    
+
     print("Clean completed successfully!")
 
 def main():
@@ -94,14 +94,7 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='Enable verbose output')
     parser.add_argument('-f', '--force', action='store_true', help='Force rebuilding even if wheels exist')
     parser.add_argument('-c', '--clean', action='store_true', help='Clean up build artifacts before building')
-
-    # Add arguments that might be passed by rye build
-    parser.add_argument('--outdir', help='Output directory for built packages (used by rye build)', nargs='?')
-    parser.add_argument('--installer', help='Installer to use (used by rye build)', nargs='?')
-    parser.add_argument('--wheel', action='store_true', help='Build wheel package (used by rye build)')
-    
-    # Allow any additional positional arguments without error
-    parser.add_argument('additional_args', nargs='*', help='Additional arguments passed by rye build')
+    parser.add_argument('--wheel', action='store_true', help='Build wheel package')
 
     args = parser.parse_args()
 
@@ -110,26 +103,26 @@ def main():
     # Clean build artifacts if requested
     if args.clean:
         clean_build_artifacts(project_root, args.verbose)
-    
-    # Step 1: Ensure Rye/UV environment is set up
+
+    # Step 1: Ensure UV environment is set up
     if not (project_root / ".venv").exists():
-        print("Setting up Rye virtual environment...")
-        run_command(["rye", "sync"], cwd=project_root, verbose=args.verbose)
-    
+        print("Setting up UV .venv virtual environment...")
+        run_command(["uv", "sync", "--no-build", "--no-install-workspace"], cwd=project_root, verbose=args.verbose)
+
     # Step 2: Build all Rust crates using maturin
     print("Building Rust crates with maturin...")
-    
+
     # Path to maturin in the virtual environment
     venv_path = project_root / ".venv"
     if sys.platform == "win32":
         maturin_path = venv_path / "Scripts" / "maturin.exe"
     else:
         maturin_path = venv_path / "bin" / "maturin"
-    
+
     if not maturin_path.exists():
         print(f"Maturin not found at {maturin_path}. Installing...")
-        run_command(["rye", "run", "pip", "install", "maturin>=1.5,<2.0"], cwd=project_root, verbose=args.verbose)
-    
+        run_command(["uv", "run", "pip", "install", "maturin>=1.5,<2.0"], cwd=project_root, verbose=args.verbose)
+
     # Build each package individually
     packages = [
         "aerosim-controllers",
@@ -150,7 +143,7 @@ def main():
             print(f"Found {wheel_count} wheels in dist directory, may skip building if not requested")
             if not args.force:
                 skip_builds = True
-    
+
     if not skip_builds:
         total_packages = len(packages)
         for i, package in enumerate(packages):
@@ -158,7 +151,7 @@ def main():
             package_path = project_root / package / "Cargo.toml"
             if package_path.exists():
                 run_command(
-                    [str(maturin_path), "develop", "--skip-install", "-m", str(package_path)],
+                    [str(maturin_path), "develop", "--release", "--skip-install", "-m", str(package_path)],
                     cwd=project_root, verbose=args.verbose
                 )
             else:
@@ -196,17 +189,12 @@ def main():
             for file in world_link_dir.iterdir():
                 print(f"  {file}")
 
-    # Step 4: Additional Python package setup if needed
-    print("Installing additional Python dependencies...")
+    # Step 4: Install final built packages to the Python virtual environment
+    print("Installing final Python packages...")
     run_command(
-        ["rye", "sync", "--no-lock"], 
+        ["uv", "sync"],
         cwd=project_root, verbose=args.verbose
     )
-
-    # Step 5: Handle rye build arguments if present
-    if args.outdir and args.wheel:
-        print(f"Rye build detected with outdir: {args.outdir}")
-        print("Note: These arguments are handled by rye directly and don't need processing here.")
 
     print("Build completed successfully!")
 
