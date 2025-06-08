@@ -39,7 +39,7 @@ echo -e "${YELLOW}Working directory: $(pwd)${NC}"
 
 # Build the wheels
 echo -e "${YELLOW}Building wheels...${NC}"
-uv run --no-project build.py --wheel
+uv run --no-project build.py --wheel $*
 
 # Print the contents of the dist directory
 echo -e "${YELLOW}Contents of dist directory:${NC}"

@@ -1,2 +1,2 @@
 @echo off
-uv run --no-project build.py --wheel
+uv run --no-project build.py --wheel %*
