@@ -10,15 +10,16 @@ echo "Current directory: $(pwd)"
 
 # Check if header file exists, if not force a clean build
 if [ ! -f "$SCRIPT_DIR/lib/aerosim_world_link.h" ]; then
-  echo "Header file aerosim_world_link.h is missing, performing clean build..."
-  cargo clean --manifest-path="$SCRIPT_DIR/Cargo.toml"
+    echo "Header file aerosim_world_link.h is missing, performing clean build..."
+    cargo clean --manifest-path="$SCRIPT_DIR/Cargo.toml"
 fi
 
 if [ -n "$CI" ] || [ "$(uname)" == "Linux" ]; then
-  echo "Forcing Linux target for CI or Linux environment"
-  # Create .cargo/config.toml if it doesn't exist
-  mkdir -p .cargo
-  cat > .cargo/config.toml << EOL
+    if [ ! -f "$SCRIPT_DIR/.cargo/config.toml" ]; then
+        echo "Forcing Linux target for CI or Linux environment"
+        # Create .cargo/config.toml if it doesn't exist
+        mkdir -p .cargo
+        cat > .cargo/config.toml << EOL
 [build]
 incremental = true
 jobs = 8
@@ -27,12 +28,13 @@ jobs = 8
 linker = "cc"
 rustflags = ["-C", "target-feature=-crt-static"]
 EOL
-  # Make sure we use the Linux target explicitly
-  RUSTFLAGS='-C target-feature=-crt-static'
-  export RUSTFLAGS
-  TARGET_FLAG="--target x86_64-unknown-linux-gnu"
+        # Make sure we use the Linux target explicitly
+        RUSTFLAGS='-C target-feature=-crt-static'
+        export RUSTFLAGS
+        TARGET_FLAG="--target x86_64-unknown-linux-gnu"
+    fi
 else
-  TARGET_FLAG=""
+    TARGET_FLAG=""
 fi
 
 echo "Building aerosim-world-link library for $(uname)..."
