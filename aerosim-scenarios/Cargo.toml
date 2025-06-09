@@ -1,7 +1,9 @@
 [package]
 name = "aerosim-scenearios"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+authors.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
@@ -9,10 +11,9 @@ name = "aerosim_scenarios"
 crate-type = ["cdylib"]
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-pyo3 = { version="0.23.3" }
-strum = { version = "0.26.3", features = ["derive"] }
-strum_macros = "0.26.4"
-lazy_static = "1.5.0"
 aerosim-data = { path = "../aerosim-data" }
+pyo3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
