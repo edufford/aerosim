@@ -451,7 +451,7 @@
                 "rgb_camera_chase"
             ],
             "viewport_config": {
-                "active_camera": "rgb_camera_chase"
+                "active_camera": "rgb_camera_pilot"
             }
         }
     ],
