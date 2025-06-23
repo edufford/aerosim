@@ -1,9 +1,10 @@
+pub mod components;
 pub mod data_manager;
+pub mod fmu_driver;
 pub mod logging;
 pub mod orchestrator;
 pub mod scene_graph;
 pub mod sim_clock;
-pub mod components;
 
 use pyo3::prelude::*;
 
@@ -12,5 +13,6 @@ use pyo3::prelude::*;
 #[pymodule]
 fn _aerosim_world(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<orchestrator::Orchestrator>()?;
+    m.add_class::<fmu_driver::FmuDriverRust>()?;
     Ok(())
 }

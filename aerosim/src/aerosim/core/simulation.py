@@ -69,7 +69,7 @@ class AeroSim:
         for fmu_config in self.sim_config_json["fmu_models"]:
             print(f"Initializing AeroSim FMU Driver '{fmu_config['id']}'...")
             self.aerosim_fmudrivers.append(
-                aerosim_world.FmuDriver(fmu_config["id"], sim_config_dir)
+                aerosim_world.FmuDriverRust(fmu_config["id"], sim_config_dir, "kafka")
             )
 
         # ----------------------------------------------
