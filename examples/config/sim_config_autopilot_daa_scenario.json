@@ -408,7 +408,7 @@
                     "fov": 90,
                     "near_clip": 0.1,
                     "far_clip": 1000.0,
-                    "capture_enabled": true
+                    "capture_enabled": false
                 }
             },
             {
