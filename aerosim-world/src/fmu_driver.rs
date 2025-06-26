@@ -1,5 +1,10 @@
 use ::log::{info, warn};
-use aerosim_data::types::{ActorState, Vector3, VehicleState};
+use aerosim_data::{
+    middleware::MiddlewareRaw,
+    types::{ActorState, Vector3, VehicleState},
+};
+use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::{
     mpsc::{self, Receiver, Sender, TryRecvError},
     Arc,
@@ -9,7 +14,7 @@ use std::thread::JoinHandle;
 use pyo3::prelude::*;
 
 use aerosim_data::{
-    middleware::{Metadata, Middleware, MiddlewareEnum, MiddlewareRegistry},
+    middleware::{Metadata, Middleware, MiddlewareEnum, MiddlewareRegistry, Serializer},
     types::{JsonData, TimeStamp},
 };
 
@@ -18,7 +23,6 @@ pub struct FmuDriverRust {
     #[pyo3(get)]
     fmu_id: String,
     _working_dir: String,
-    _sim_config: String,
     middleware: Arc<MiddlewareEnum>,
     runtime: Arc<tokio::runtime::Runtime>,
     fmu_driver_thread_handle: Option<JoinHandle<()>>,
@@ -29,10 +33,9 @@ pub struct FmuDriverRust {
 impl FmuDriverRust {
     #[new]
     fn __new__(fmu_id: &str, working_dir: &str, _middleware_type: &str) -> Self {
-        FmuDriverRust {
+        let mut fmu_driver = FmuDriverRust {
             fmu_id: fmu_id.to_string(),
             _working_dir: working_dir.to_string(),
-            _sim_config: Default::default(),
             middleware: MiddlewareRegistry::new()
                 .get("kafka")
                 .expect("Couldn't create middleware."),
@@ -41,13 +44,10 @@ impl FmuDriverRust {
             ),
             fmu_driver_thread_handle: None,
             fmu_driver_thread_tx_stop: None,
-        }
-    }
+        };
 
-    fn start(&mut self) -> PyResult<()> {
-        info!("[{}] FMU Driver start.", self.fmu_id);
-        let middleware = Arc::clone(&self.middleware);
-        let runtime = Arc::clone(&self.runtime);
+        let middleware = Arc::clone(&fmu_driver.middleware);
+        let runtime = Arc::clone(&fmu_driver.runtime);
 
         // Channels to send received message data from subscriber to FMU Driver thread for processing
         let (tx_clock_msg, rx_clock_msg) = mpsc::channel::<(JsonData, Metadata)>();
@@ -82,7 +82,7 @@ impl FmuDriverRust {
         runtime.block_on(async {
             match middleware
                 .subscribe::<JsonData>("aerosim.clock", {
-                    let fmu_id = self.fmu_id.clone();
+                    let fmu_id = fmu_driver.fmu_id.clone();
                     Box::new(move |data, metadata| {
                         FmuDriverRust::handle_clock_message(data, metadata, &tx_clock_msg, &fmu_id);
                         Ok(())
@@ -98,26 +98,30 @@ impl FmuDriverRust {
         });
 
         let (tx_stop, rx_stop): (Sender<bool>, Receiver<bool>) = mpsc::channel();
-        self.fmu_driver_thread_tx_stop = Some(tx_stop);
+        fmu_driver.fmu_driver_thread_tx_stop = Some(tx_stop);
 
-        let thread_builder =
-            std::thread::Builder::new().name(format!("fmu_driver [{}]", self.fmu_id));
+        let thread_builder = std::thread::Builder::new().name(format!("fmu_driver [{}]", fmu_id));
 
-        let fmu_id = self.fmu_id.clone();
-        self.fmu_driver_thread_handle = Some(
+        let fmu_id = fmu_driver.fmu_id.clone();
+        fmu_driver.fmu_driver_thread_handle = Some(
             thread_builder
                 .spawn(move || {
                     runtime.block_on(FmuDriverRust::fmu_driver_main(
                         rx_stop,
                         rx_clock_msg,
                         rx_orchestrator_msg,
-                        middleware,
+                        middleware.clone(),
                         &fmu_id,
                     ))
                 })
                 .expect("Unable to spawn FMU Driver thread"),
         );
 
+        fmu_driver
+    }
+
+    fn start(&mut self) -> PyResult<()> {
+        info!("[{}] FMU Driver start (no-op).", self.fmu_id);
         Ok(())
     }
 
@@ -160,6 +164,13 @@ impl FmuDriverRust {
         info!("[{}] FMU Driver main thread started.", fmu_id);
 
         let mut running = true;
+
+        let mut fmu_config_json: Value = serde_json::Value::Null;
+
+        let mut all_topics_to_subscribe: HashSet<(String, String)> = HashSet::new();
+        let mut aux_topics_to_subscribe: HashSet<String> = HashSet::new();
+        let mut aux_topics_to_publish: HashSet<String> = HashSet::new();
+
         while running {
             // Check for a received orchestrator command message to process
             match rx_orchestrator_msg.try_recv() {
@@ -167,35 +178,229 @@ impl FmuDriverRust {
                     let msg_json = payload.get_data().expect("Unable to get JsonData payload.");
                     let command = msg_json
                         .get("command")
-                        .expect("Unable to get 'command field from JSON.");
+                        .expect("Unable to get 'command' field from JSON.")
+                        .as_str()
+                        .expect("Unable to get 'command' as string.");
+
                     info!(
                         "[{}] FMU Driver thread processing topic: {} command {}",
                         fmu_id, metadata.topic, command
                     );
 
-                    if command == "start" {
-                        // Publish dummy "aerosim.actor1.vehicle_state" as initial sync topic
-                        let veh_state = VehicleState::new(
-                            ActorState::default(),
-                            Vector3::default(),
-                            Vector3::default(),
-                            Vector3::default(),
-                            Vector3::default(),
-                        );
+                    match command {
+                        "stop" => {
+                            running = false;
+                        }
 
-                        info!("Publishing initial sync topic vehicle_state.");
+                        "load_config" => {
+                            info!("[{}] Received orchestrator load command.", fmu_id);
 
-                        let timestamp_sim = TimeStamp { sec: 0, nanosec: 0 };
-                        let _ = middleware
-                            .publish(
-                                "aerosim.actor1.vehicle_state",
-                                &veh_state,
-                                Some(timestamp_sim),
-                            )
-                            .await;
-                    } else if command == "stop" {
-                        running = false;
-                    }
+                            // ----------------------------------------------------------------
+                            // Load the FMU config into fmu_config_json
+
+                            let sim_config = msg_json
+                                .pointer("/parameters/sim_config")
+                                .expect(
+                                    "Unable to get ['parameters']['sim_config'] field from JSON",
+                                )
+                                .clone();
+
+                            for fmu_config in sim_config
+                                .get("fmu_models")
+                                .expect("Unable to get 'fmu_models' field from JSON")
+                                .as_array()
+                                .expect("Unable to get 'fmu_models' as array")
+                            {
+                                if fmu_config
+                                    .get("id")
+                                    .expect("Unable to get 'id' field from JSON")
+                                    .as_str()
+                                    .expect("Unable to get 'id' as string")
+                                    == fmu_id
+                                {
+                                    fmu_config_json = fmu_config.clone();
+                                    break;
+                                }
+                            }
+
+                            if fmu_config_json.is_null() {
+                                warn!("[{}] FMU ID not found in sim config.", fmu_id);
+                            }
+
+                            info!("[{}] Received fmu_config: {:?}", fmu_id, fmu_config_json);
+
+                            // ----------------------------------------------------------------
+                            // Process fmu_config_json
+
+                            // TODO Refactor this block into load_config()
+                            {
+                                if let Some(in_topics) =
+                                    fmu_config_json.get("component_input_topics")
+                                {
+                                    for in_topic_info in in_topics
+                                        .as_array()
+                                        .expect("Unable to get 'component_input_topics' as array")
+                                    {
+                                        let in_topic = in_topic_info
+                                            .get("topic")
+                                            .expect("Unable to get 'topic' field from JSON")
+                                            .as_str()
+                                            .expect("Unable to get 'topic' as string");
+                                        let msg_type = in_topic_info
+                                            .get("msg_type")
+                                            .expect("Unable to get 'msg_type' field from JSON")
+                                            .as_str()
+                                            .expect("Unable to get 'msg_type' as string");
+                                        all_topics_to_subscribe
+                                            .insert((msg_type.to_string(), in_topic.to_string()));
+                                        // self.in_topic_data[in_topic] = {}
+                                    }
+                                }
+
+                                if let Some(aux_in_mapping) =
+                                    fmu_config_json.get("fmu_aux_input_mapping")
+                                {
+                                    for (in_topic_root, _) in aux_in_mapping
+                                        .as_object()
+                                        .expect("Unable to get 'fmu_aux_input_mapping' as object")
+                                    {
+                                        all_topics_to_subscribe.insert((
+                                            "aerosim::types::JsonData".to_string(),
+                                            in_topic_root.to_string(),
+                                        ));
+                                        aux_topics_to_subscribe.insert(in_topic_root.to_string());
+                                        // self.in_topic_data[in_topic_root] = {}
+                                    }
+                                }
+
+                                if let Some(aux_out_mapping) =
+                                    fmu_config_json.get("fmu_aux_output_mapping")
+                                {
+                                    for (out_topic_root, _) in aux_out_mapping
+                                        .as_object()
+                                        .expect("Unable to get 'fmu_aux_output_mapping' as object")
+                                    {
+                                        aux_topics_to_publish.insert(out_topic_root.to_string());
+                                        // self.out_topic_data[out_topic_root] = {}
+                                    }
+                                }
+                            }
+
+                            // ----------------------------------------------------------------
+                            // Subscribe to all of the topics specified in the sim config
+
+                            let all_topic_to_subscribe: Vec<(String, String)> =
+                                all_topics_to_subscribe.clone().into_iter().collect();
+
+                            info!(
+                                "[{}] Subscribing to topics: {:?}",
+                                fmu_id, all_topic_to_subscribe
+                            );
+
+                            let _ = middleware
+                                .subscribe_all_raw(all_topic_to_subscribe, {
+                                    // Prepare necessary components to be moved into the callback scope.
+                                    let serializer = middleware.get_serializer();
+                                    let fmu_id_str = fmu_id.to_string();
+
+                                    // TODO Refactor this into input_data_callback()
+                                    Box::new(move |payload: &[u8]| {
+                                        // Deserialize metadata from the incoming payload and determine the simulation timestamp.
+                                        // If the simulation timestamp is not valid, compute it based on the real-time platform timestamp.
+                                        let metadata = serializer
+                                            .deserialize_metadata(payload)
+                                            .ok_or(format!(
+                                                "Could not deserialize metadata from payload"
+                                            ))?;
+
+                                        // TODO Handle all input data in this callback
+                                        info!(
+                                            "[{}] Subscribe all callback received topic: {}",
+                                            fmu_id_str, metadata.topic
+                                        );
+
+                                        match metadata.type_name.as_str() {
+                                            "aerosim::types::JsonData" => {
+                                                let data = serializer
+                                                    .deserialize_data::<JsonData>(payload)
+                                                    .expect("Error deserializing JsonData");
+                                                info!(
+                                                    "Deserialized JsonData: {:?}",
+                                                    data.get_data()
+                                                );
+                                            }
+                                            _ => {
+                                                warn!(
+                                                    "Skipping deserialization of unknown type: {}",
+                                                    metadata.type_name
+                                                );
+                                            }
+                                        }
+
+                                        Ok(())
+                                    })
+                                })
+                                .await;
+
+                            // ----------------------------------------------------------------
+                            // Load the FMU model file
+
+                            // self.load_fmu()
+
+                            // ----------------------------------------------------------------
+                            // After loading FMU model file to populate self.fmu_var_refs, pass
+                            // through the world origin values if the FMU has variables for it
+
+                            // if (
+                            //     "world_origin_latitude" in self.fmu_var_refs
+                            //     and "world_origin_longitude" in self.fmu_var_refs
+                            //     and "world_origin_altitude" in self.fmu_var_refs
+                            // ):
+                            //     self.fmu_config_json["fmu_initial_vals"][
+                            //         "world_origin_latitude"
+                            //     ] = sim_config["world"]["origin"]["latitude"]
+
+                            //     self.fmu_config_json["fmu_initial_vals"][
+                            //         "world_origin_longitude"
+                            //     ] = sim_config["world"]["origin"]["longitude"]
+
+                            //     self.fmu_config_json["fmu_initial_vals"][
+                            //         "world_origin_altitude"
+                            //     ] = sim_config["world"]["origin"]["altitude"]
+
+                            // self._is_sim_config_loaded = True
+
+                            info!("[{}] Done loading sim config.", fmu_id);
+                        }
+
+                        "start" => {
+                            // Publish dummy "aerosim.actor1.vehicle_state" as initial sync topic
+                            let veh_state = VehicleState::new(
+                                ActorState::default(),
+                                Vector3::default(),
+                                Vector3::default(),
+                                Vector3::default(),
+                                Vector3::default(),
+                            );
+
+                            info!("Publishing initial sync topic vehicle_state.");
+
+                            let timestamp_sim = TimeStamp { sec: 0, nanosec: 0 };
+                            let _ = middleware
+                                .publish(
+                                    "aerosim.actor1.vehicle_state",
+                                    &veh_state,
+                                    Some(timestamp_sim),
+                                )
+                                .await;
+                        }
+
+                        "load_scene_graph" => { /* No-op for FMU driver */ }
+
+                        &_ => {
+                            warn!("Unknown orchestrator command: {}", command);
+                        }
+                    };
                 }
                 Err(TryRecvError::Disconnected) => {
                     running = false;
