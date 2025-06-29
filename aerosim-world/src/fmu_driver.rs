@@ -1,28 +1,37 @@
 use ::log::{info, warn};
-use aerosim_data::{
-    middleware::MiddlewareRaw,
-    types::{ActorState, Vector3, VehicleState},
-};
-use serde_json::Value;
 use std::collections::HashSet;
+use std::path::Path;
+use std::rc::Rc;
 use std::sync::{
     mpsc::{self, Receiver, Sender, TryRecvError},
     Arc,
 };
 use std::thread::JoinHandle;
 
+use ouroboros::self_referencing;
 use pyo3::prelude::*;
+use serde_json::Value;
+
+use fmi::fmi2::import::Fmi2Import;
+use fmi::fmi3::import::Fmi3Import;
+use fmi::schema::{
+    fmi3::{ArrayableVariableTrait, VariableType},
+    traits::FmiModelDescription,
+};
+use fmi::traits::{FmiImport, FmiInstance};
 
 use aerosim_data::{
-    middleware::{Metadata, Middleware, MiddlewareEnum, MiddlewareRegistry, Serializer},
-    types::{JsonData, TimeStamp},
+    middleware::{
+        Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry, Serializer,
+    },
+    types::{ActorState, JsonData, TimeStamp, Vector3, VehicleState},
 };
 
 #[pyclass]
 pub struct FmuDriverRust {
     #[pyo3(get)]
     fmu_id: String,
-    _working_dir: String,
+    working_dir: String,
     middleware: Arc<MiddlewareEnum>,
     runtime: Arc<tokio::runtime::Runtime>,
     fmu_driver_thread_handle: Option<JoinHandle<()>>,
@@ -35,7 +44,7 @@ impl FmuDriverRust {
     fn __new__(fmu_id: &str, working_dir: &str, _middleware_type: &str) -> Self {
         let mut fmu_driver = FmuDriverRust {
             fmu_id: fmu_id.to_string(),
-            _working_dir: working_dir.to_string(),
+            working_dir: working_dir.to_string(),
             middleware: MiddlewareRegistry::new()
                 .get("kafka")
                 .expect("Couldn't create middleware."),
@@ -103,6 +112,7 @@ impl FmuDriverRust {
         let thread_builder = std::thread::Builder::new().name(format!("fmu_driver [{}]", fmu_id));
 
         let fmu_id = fmu_driver.fmu_id.clone();
+        let working_dir = fmu_driver.working_dir.clone();
         fmu_driver.fmu_driver_thread_handle = Some(
             thread_builder
                 .spawn(move || {
@@ -112,6 +122,7 @@ impl FmuDriverRust {
                         rx_orchestrator_msg,
                         middleware.clone(),
                         &fmu_id,
+                        &working_dir,
                     ))
                 })
                 .expect("Unable to spawn FMU Driver thread"),
@@ -152,6 +163,82 @@ impl FmuDriverRust {
     }
 }
 
+// pub struct FmiModel {
+//     fmu_import: Box<Fmi3Import>,
+//     fmu_instance: fmi::fmi3::instance::InstanceCS<'static>,
+// }
+
+// impl FmiModel {
+//     pub fn new(fmu_filename: PathBuf) -> Self {
+//         // Allocate the import on the heap and leak it to get a 'static reference.
+//         let fmu_import_box: Box<Fmi3Import> =
+//             Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
+//         let fmu_import_static: &'static Fmi3Import = Box::leak(fmu_import_box);
+
+//         let fmu_instance = fmu_import_static
+//             .instantiate_cs("instance1", false, true, false, false, &[])
+//             .expect("Unable to instantiate FMU instance.");
+
+//         // Rebuild the Box to deallocate it later.
+//         let fmu_import =
+//             unsafe { Box::from_raw(fmu_import_static as *const Fmi3Import as *mut Fmi3Import) };
+
+//         Self {
+//             fmu_import,
+//             fmu_instance,
+//         }
+//     }
+// }
+
+// pub struct FmiModel<'a> {
+//     fmu_import: Box<Fmi3Import>,
+//     fmu_instance: fmi::fmi3::instance::InstanceCS<'a>,
+// }
+
+// impl<'a> FmiModel<'a> {
+//     pub fn new(fmu_filename: PathBuf) -> Self {
+//         // Allocate the import on the heap.
+//         let fmu_import: Box<Fmi3Import> =
+//             Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
+
+//         // Manually extend the lifetime of the reference to match 'a through a raw pointer.
+//         let fmu_import_ref: &'a Fmi3Import =
+//             unsafe { &*(fmu_import.as_ref() as *const Fmi3Import) };
+
+//         let fmu_instance = fmu_import_ref
+//             .instantiate_cs("instance1", false, true, false, false, &[])
+//             .expect("Unable to instantiate FMU instance.");
+
+//         Self {
+//             fmu_import,
+//             fmu_instance,
+//         }
+//     }
+// }
+
+#[self_referencing]
+pub struct FmiModel {
+    fmu_import: Rc<Fmi3Import>,
+    #[covariant]
+    #[borrows(fmu_import)]
+    fmu_instance: fmi::fmi3::instance::InstanceCS<'this>,
+}
+
+// pub enum FmiImportEnum {
+//     Fmi2Import(Fmi2Import),
+//     Fmi3Import(Fmi3Import),
+// }
+
+// pub enum FmiInstanceEnum<'a> {
+//     Fmi2Instance(fmi::fmi2::instance::InstanceCS<'a>),
+//     Fmi3Instance(fmi::fmi3::instance::InstanceCS<'a>),
+// }
+
+// pub enum ModelDescriptionEnum<'a> {
+//     Fmi2ModelDescription(&'a fmi::fmi2::schema::Fmi2ModelDescription),
+//     Fmi3ModelDescription(&'a fmi::fmi3::schema::Fmi3ModelDescription),
+// }
+
 // Rust-only FmuDriverRust functions
 impl FmuDriverRust {
     async fn fmu_driver_main(
@@ -160,6 +247,7 @@ impl FmuDriverRust {
         rx_orchestrator_msg: Receiver<(JsonData, Metadata)>,
         middleware: Arc<MiddlewareEnum>,
         fmu_id: &str,
+        working_dir: &str,
     ) {
         info!("[{}] FMU Driver main thread started.", fmu_id);
 
@@ -170,6 +258,8 @@ impl FmuDriverRust {
         let mut all_topics_to_subscribe: HashSet<(String, String)> = HashSet::new();
         let mut aux_topics_to_subscribe: HashSet<String> = HashSet::new();
         let mut aux_topics_to_publish: HashSet<String> = HashSet::new();
+
+        let mut fmu_model: Option<FmiModel> = None;
 
         while running {
             // Check for a received orchestrator command message to process
@@ -345,7 +435,178 @@ impl FmuDriverRust {
                             // ----------------------------------------------------------------
                             // Load the FMU model file
 
-                            // self.load_fmu()
+                            // TODO Refactor this block into load_fmu()
+                            {
+                                // ------------------------------------------------------------
+                                // FMU model file path processing
+
+                                let fmu_model_path = fmu_config_json
+                                    .get("fmu_model_path")
+                                    .expect("Unable to get 'fmu_model_path' field from JSON")
+                                    .as_str()
+                                    .expect("Unable to get 'fmu_model_path' as string");
+                                let mut fmu_model_path_buf =
+                                    Path::new(fmu_model_path).to_path_buf();
+
+                                // Check if file exists at fmu_model_path
+                                if !fmu_model_path_buf.exists() {
+                                    // If the FMU model path is not found, check if it is relative to
+                                    // the AeroSim root dir
+                                    let aerosim_root = match std::env::var("AEROSIM_ROOT") {
+                                        Ok(root_path) => root_path,
+                                        Err(_) => "".to_string(),
+                                    };
+
+                                    fmu_model_path_buf =
+                                        Path::new(&aerosim_root).join(fmu_model_path);
+                                }
+
+                                if !fmu_model_path_buf.exists() {
+                                    // If the FMU model path is still not found, check if it is relative to
+                                    // the working directory
+                                    fmu_model_path_buf =
+                                        Path::new(&working_dir).join(fmu_model_path);
+                                }
+
+                                let fmu_filename = fmu_model_path_buf
+                                    .canonicalize()
+                                    .expect("Unable to canonicalize fmu_model_path");
+
+                                info!("[{}] Loading FMU file: {:?}", fmu_id, fmu_filename);
+
+                                // Peek the model description to check the FMI version
+                                let min_model_desc = fmi::import::peek_descr_path(&fmu_filename)
+                                    .expect("Unable to peek model description.");
+
+                                if min_model_desc.version_string() == "2.0" {
+                                    // ------------------------------------------------------------
+                                    // FMI 2.0 model processing
+
+                                    let _fmu_import: Fmi2Import =
+                                        fmi::import::from_path(&fmu_filename)
+                                            .expect("Unable to import FMU file.");
+
+                                    // TODO implement FMI2 model processing
+                                } else if min_model_desc.version_string() == "3.0" {
+                                    // ------------------------------------------------------------
+                                    // FMI 3.0 model processing
+
+                                    let fmu_import: Rc<Fmi3Import> = Rc::new(
+                                        fmi::import::from_path(&fmu_filename)
+                                            .expect("Unable to import FMU file."),
+                                    );
+
+                                    let fmu_model_desc = fmu_import.model_description();
+
+                                    info!(
+                                        "[{}] FMU model name: {}, FMI ver: {}",
+                                        fmu_id,
+                                        fmu_model_desc.model_name,
+                                        fmu_model_desc.fmi_version
+                                    );
+
+                                    // Collect all of the variable value references
+                                    let all_fmu_var_iter = itertools::chain!(
+                                        fmu_model_desc
+                                            .model_variables
+                                            .float64
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .float32
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .int64
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .int32
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .int16
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .int8
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .uint64
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .uint32
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .uint16
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .uint8
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .boolean
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                        fmu_model_desc
+                                            .model_variables
+                                            .string
+                                            .iter()
+                                            .map(|v| v as &dyn ArrayableVariableTrait),
+                                    );
+
+                                    for fmu_var in all_fmu_var_iter {
+                                        let fmu_var_ref = fmu_var.value_reference();
+                                        let fmu_var_name = fmu_var.name();
+                                        let fmu_var_type = fmu_var.data_type();
+                                        let fmu_var_dim = fmu_var.dimensions();
+                                        let fmu_var_caus = fmu_var.causality();
+                                        info!(
+                                                "[{}] FMU ref={} var='{}', type={}, dim={:?}, causality={:?}",
+                                                fmu_id,
+                                                fmu_var_ref,
+                                                fmu_var_name,
+                                                var_type_to_string(fmu_var_type),
+                                                fmu_var_dim,
+                                                fmu_var_caus
+                                            );
+                                    }
+
+                                    // Load the FMU instance
+                                    fmu_model = Some(
+                                        FmiModelBuilder {
+                                            fmu_import,
+                                            fmu_instance_builder: |fmu_import_ref| {
+                                                fmu_import_ref
+                                                    .instantiate_cs(
+                                                        "instance1",
+                                                        false,
+                                                        true,
+                                                        false,
+                                                        false,
+                                                        &[],
+                                                    )
+                                                    .expect("Unable to instantiate FMU instance.")
+                                            },
+                                        }
+                                        .build(),
+                                    );
+                                }
+                            }
 
                             // ----------------------------------------------------------------
                             // After loading FMU model file to populate self.fmu_var_refs, pass
@@ -422,6 +683,15 @@ impl FmuDriverRust {
                         fmu_id, timestamp_sim
                     );
 
+                    if let Some(fmu_model_ref) = fmu_model.as_ref() {
+                        let fmu_instance = fmu_model_ref.borrow_fmu_instance();
+                        info!(
+                            "FMU instance name: {}, version: {}",
+                            FmiInstance::name(fmu_instance),
+                            FmiInstance::get_version(fmu_instance)
+                        );
+                    }
+
                     // Publish dummy "aerosim.actor1.vehicle_state" topic
                     let veh_state = VehicleState::new(
                         ActorState::default(),
@@ -487,25 +757,28 @@ impl FmuDriverRust {
     }
 }
 
+fn var_type_to_string(var_type: VariableType) -> String {
+    return match var_type {
+        VariableType::FmiFloat64 => "float64".to_string(),
+        VariableType::FmiFloat32 => "float32".to_string(),
+        VariableType::FmiInt64 => "int64".to_string(),
+        VariableType::FmiInt32 => "int32".to_string(),
+        VariableType::FmiInt16 => "int16".to_string(),
+        VariableType::FmiInt8 => "int8".to_string(),
+        VariableType::FmiUInt64 => "uint64".to_string(),
+        VariableType::FmiUInt32 => "uint32".to_string(),
+        VariableType::FmiUInt16 => "uint16".to_string(),
+        VariableType::FmiUInt8 => "uint8".to_string(),
+        VariableType::FmiBoolean => "bool".to_string(),
+        VariableType::FmiString => "string".to_string(),
+        _ => "unknown".to_string(),
+    };
+}
+
 #[cfg(test)]
 mod tests {
-    // use super::*;
-
-    use fmi::fmi3::{import::Fmi3Import, instance::CoSimulation};
-    use fmi::schema::fmi3::VariableType;
-    use fmi::traits::{FmiImport, FmiInstance};
-    use fmi::{fmi3::instance::Common, schema::fmi3::ArrayableVariableTrait};
-
-    fn var_type_to_string(var_type: VariableType) -> String {
-        return match var_type {
-            VariableType::FmiBoolean => "bool".to_string(),
-            VariableType::FmiFloat32 => "float32".to_string(),
-            VariableType::FmiFloat64 => "float64".to_string(),
-            VariableType::FmiInt32 => "int32".to_string(),
-            VariableType::FmiInt64 => "int64".to_string(),
-            _ => "unknown".to_string(),
-        };
-    }
+    use super::*;
+    use fmi::fmi3::instance::{CoSimulation, Common};
 
     #[test]
     fn test_fmu_float64_array() {
