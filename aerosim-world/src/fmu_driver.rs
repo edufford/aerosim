@@ -14,6 +14,7 @@ use serde_json::Value;
 
 use fmi::fmi2::import::Fmi2Import;
 use fmi::fmi3::import::Fmi3Import;
+use fmi::fmi3::instance::{CoSimulation, Common};
 use fmi::schema::{
     fmi3::{ArrayableVariableTrait, VariableType},
     traits::FmiModelDescription,
@@ -737,32 +738,91 @@ impl FmuDriverRust {
                         fmu_id, timestamp_sim
                     );
 
-                    if let Some(fmu_model_ref) = fmu_model.as_ref() {
-                        let fmu_instance = fmu_model_ref.borrow_fmu_instance();
-                        info!(
-                            "FMU instance name: {}, version: {}",
-                            FmiInstance::name(fmu_instance),
-                            FmiInstance::get_version(fmu_instance)
-                        );
+                    // ------------------------------------------------------------------------
+                    // Step the FMU model instance
+
+                    {
+                        // self.step_fmu(simtime_as_sec)
+                        if let Some(fmu_model_ref) = fmu_model.as_mut() {
+                            let simtime_sec = timestamp_sim.to_sec();
+                            let cur_step_sec = simtime_sec - fmu_time;
+                            if cur_step_sec < 0.0 {
+                                warn!(
+                                    "[{}] Negative time step for simtime_sec='{}' fmu_time='{}'",
+                                    fmu_id, simtime_sec, fmu_time
+                                );
+                            } else {
+                                fmu_model_ref.with_fmu_instance_mut(|fmu_instance| {
+                                    // ------------------------------------------------------------
+                                    // Write inputs to the FMU from self.in_topic_data and fmu_aux_input_mapping
+
+                                    // Process every input topic that has been received and stored in self.in_topic_data
+
+                                    // ------------------------------------------------------------
+                                    // Do one step of the FMU
+                                    let no_set_fmu_state_prior_to_current_point = false;
+
+                                    let mut event_handling_needed = false;
+                                    let mut terminate_simulation = false;
+                                    let mut early_return = false;
+                                    let mut last_successful_time: f64 = 0.0;
+
+                                    fmu_instance.do_step(
+                                        fmu_time,
+                                        cur_step_sec,
+                                        no_set_fmu_state_prior_to_current_point,
+                                        &mut event_handling_needed,
+                                        &mut terminate_simulation,
+                                        &mut early_return,
+                                        &mut last_successful_time,
+                                    );
+
+                                    // Advance the time
+                                    fmu_time = last_successful_time;
+
+                                    info!("[{}] FMU step done, fmu_time: {}", fmu_id, fmu_time);
+
+                                    // ------------------------------------------------------------
+                                    // Read outputs from the FMU to update self.fmu_data
+
+                                    // Store latest values for all FMU in/output variables
+
+                                    // Process auxiliary FMU outputs to topics
+
+                                    // Debug test read variable
+                                    let mut ball_h = [0.0];
+                                    let ball_h_vrs = [1];
+                                    let _ = fmu_instance.get_float64(&ball_h_vrs, &mut ball_h);
+                                    println!("ball_h: {}", ball_h[0]);
+                                });
+                            }
+                        }
                     }
 
-                    // Publish dummy "aerosim.actor1.vehicle_state" topic
-                    let veh_state = VehicleState::new(
-                        ActorState::default(),
-                        Vector3::default(),
-                        Vector3::default(),
-                        Vector3::default(),
-                        Vector3::default(),
-                    );
+                    // ------------------------------------------------------------------------
+                    // Publish output data for the current timestamp
 
-                    let timestamp_sim = TimeStamp { sec: 0, nanosec: 0 };
-                    let _ = middleware
-                        .publish(
-                            "aerosim.actor1.vehicle_state",
-                            &veh_state,
-                            Some(timestamp_sim),
-                        )
-                        .await;
+                    {
+                        // self.publish_output_data(timestamp)
+
+                        // Publish dummy "aerosim.actor1.vehicle_state" topic
+                        let veh_state = VehicleState::new(
+                            ActorState::default(),
+                            Vector3::default(),
+                            Vector3::default(),
+                            Vector3::default(),
+                            Vector3::default(),
+                        );
+
+                        let timestamp_sim = TimeStamp { sec: 0, nanosec: 0 };
+                        let _ = middleware
+                            .publish(
+                                "aerosim.actor1.vehicle_state",
+                                &veh_state,
+                                Some(timestamp_sim),
+                            )
+                            .await;
+                    }
                 }
                 Err(TryRecvError::Disconnected) => {
                     running = false;
@@ -832,7 +892,6 @@ fn var_type_to_string(var_type: VariableType) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fmi::fmi3::instance::{CoSimulation, Common};
 
     #[test]
     fn test_fmu_float64_array() {

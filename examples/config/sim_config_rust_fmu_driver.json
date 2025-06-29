@@ -446,7 +446,7 @@
     "fmu_models": [
         {
             "id": "evtol_vehicle",
-            "fmu_model_path": "examples/fmu/evtol_vehicle_fmu.fmu",
+            "fmu_model_path": "examples/fmu/Int64ArrayBouncingBall.fmu",
             "component_type": "dynamics_model",
             "component_input_topics": [],
             "component_output_topics": [
