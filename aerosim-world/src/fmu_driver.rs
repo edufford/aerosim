@@ -260,6 +260,7 @@ impl FmuDriverRust {
         let mut aux_topics_to_publish: HashSet<String> = HashSet::new();
 
         let mut fmu_model: Option<FmiModel> = None;
+        let mut fmu_time: f64 = 0.0;
 
         while running {
             // Check for a received orchestrator command message to process
@@ -610,8 +611,10 @@ impl FmuDriverRust {
 
                             // ----------------------------------------------------------------
                             // After loading FMU model file to populate self.fmu_var_refs, pass
-                            // through the world origin values if the FMU has variables for it
+                            // through the world origin values as initial values if the FMU has
+                            // variables for it
 
+                            // TODO
                             // if (
                             //     "world_origin_latitude" in self.fmu_var_refs
                             //     and "world_origin_longitude" in self.fmu_var_refs
@@ -635,25 +638,76 @@ impl FmuDriverRust {
                         }
 
                         "start" => {
-                            // Publish dummy "aerosim.actor1.vehicle_state" as initial sync topic
-                            let veh_state = VehicleState::new(
-                                ActorState::default(),
-                                Vector3::default(),
-                                Vector3::default(),
-                                Vector3::default(),
-                                Vector3::default(),
+                            info!("[{}] Received orchestrator start command.", fmu_id);
+                            // # Save sim start time from the orchestrator
+                            let sim_start_time_sec = msg_json
+                                .pointer("/parameters/sim_start_time/sec")
+                                .expect(
+                                    "Unable to get ['parameters']['sim_start_time']['sec'] field from JSON",
+                                ).as_i64().expect("Unable to get 'sec' as i64");
+                            let sim_start_time_nanosec = msg_json
+                                .pointer("/parameters/sim_start_time/nanosec")
+                                .expect(
+                                    "Unable to get ['parameters']['sim_start_time']['nanosec'] field from JSON",
+                                ).as_u64().expect("Unable to get 'nanosec' as u64");
+                            let sim_start_time = TimeStamp::new(
+                                sim_start_time_sec as i32,
+                                sim_start_time_nanosec as u32,
                             );
 
-                            info!("Publishing initial sync topic vehicle_state.");
+                            let initial_timestamp = metadata.timestamp_sim;
 
-                            let timestamp_sim = TimeStamp { sec: 0, nanosec: 0 };
-                            let _ = middleware
-                                .publish(
-                                    "aerosim.actor1.vehicle_state",
-                                    &veh_state,
-                                    Some(timestamp_sim),
-                                )
-                                .await;
+                            // Initialize the FMU model instance to be ready to start stepping
+                            {
+                                // self.init_fmu()
+                                fmu_model
+                                    .as_mut()
+                                    .expect("FMU model should be loaded")
+                                    .with_fmu_instance_mut(|fmu_instance| {
+                                        // Set some base default values for all FMU input/output variables (these are
+                                        // used in initial published output at t=0 for any variables set below by
+                                        // values specified in the "fmu_initial_vals" config)
+                                        // TODO
+
+                                        // Set initial values for FMU variables set in the "fmu_initial_vals" config
+                                        // TODO
+
+                                        // Initialize the FMU states
+                                        FmiInstance::enter_initialization_mode(
+                                            fmu_instance,
+                                            None,
+                                            fmu_time,
+                                            None,
+                                        );
+
+                                        // Exit initialization mode to be ready to start stepping
+                                        FmiInstance::exit_initialization_mode(fmu_instance);
+                                    });
+                            }
+
+                            // Publish initial value output topics for initial timestamp
+                            {
+                                // self.publish_output_data(initial_timestamp)
+                                // Publish dummy "aerosim.actor1.vehicle_state" as initial sync topic
+                                let veh_state = VehicleState::new(
+                                    ActorState::default(),
+                                    Vector3::default(),
+                                    Vector3::default(),
+                                    Vector3::default(),
+                                    Vector3::default(),
+                                );
+
+                                info!("Publishing initial sync topic vehicle_state.");
+                                let _ = middleware
+                                    .publish(
+                                        "aerosim.actor1.vehicle_state",
+                                        &veh_state,
+                                        Some(initial_timestamp),
+                                    )
+                                    .await;
+                            }
+
+                            // self._is_sim_started = True
                         }
 
                         "load_scene_graph" => { /* No-op for FMU driver */ }
