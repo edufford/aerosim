@@ -1,5 +1,5 @@
 use ::log::{info, warn};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::{
@@ -240,6 +240,10 @@ pub struct FmiModel {
 //     Fmi3ModelDescription(&'a fmi::fmi3::schema::Fmi3ModelDescription),
 // }
 
+pub fn round_microsec(sec: f64) -> f64 {
+    (sec * 1e6_f64).round() / 1e6_f64
+}
+
 // Rust-only FmuDriverRust functions
 impl FmuDriverRust {
     async fn fmu_driver_main(
@@ -256,12 +260,20 @@ impl FmuDriverRust {
 
         let mut fmu_config_json: Value = serde_json::Value::Null;
 
+        let mut fmu_var_refs: HashMap<String, u32> = HashMap::new();
+        let mut fmu_var_types: HashMap<String, VariableType> = HashMap::new();
+        let mut fmu_var_causality: HashMap<String, fmi::fmi3::schema::Causality> = HashMap::new();
+        let mut fmu_var_dims: HashMap<String, Vec<u64>> = HashMap::new();
+
         let mut all_topics_to_subscribe: HashSet<(String, String)> = HashSet::new();
         let mut aux_topics_to_subscribe: HashSet<String> = HashSet::new();
         let mut aux_topics_to_publish: HashSet<String> = HashSet::new();
 
         let mut fmu_model: Option<FmiModel> = None;
         let mut fmu_time: f64 = 0.0;
+
+        let mut fmu_data_f64: HashMap<String, Vec<f64>> = HashMap::new();
+        let mut fmu_data_i64: HashMap<String, Vec<i64>> = HashMap::new();
 
         while running {
             // Check for a received orchestrator command message to process
@@ -575,17 +587,31 @@ impl FmuDriverRust {
                                         let fmu_var_ref = fmu_var.value_reference();
                                         let fmu_var_name = fmu_var.name();
                                         let fmu_var_type = fmu_var.data_type();
-                                        let fmu_var_dim = fmu_var.dimensions();
                                         let fmu_var_caus = fmu_var.causality();
+                                        let fmu_var_dim: Vec<u64> = fmu_var
+                                            .dimensions()
+                                            .iter()
+                                            .map(|d| {
+                                                d.start.expect("Error: Only dimensions using 'start' value are supported.") as u64
+                                            })
+                                            .collect();
+
                                         info!(
                                                 "[{}] FMU ref={} var='{}', type={}, dim={:?}, causality={:?}",
                                                 fmu_id,
                                                 fmu_var_ref,
                                                 fmu_var_name,
-                                                var_type_to_string(fmu_var_type),
+                                                var_type_to_string(&fmu_var_type),
                                                 fmu_var_dim,
                                                 fmu_var_caus
                                             );
+
+                                        fmu_var_refs.insert(fmu_var_name.to_string(), fmu_var_ref);
+                                        fmu_var_types
+                                            .insert(fmu_var_name.to_string(), fmu_var_type);
+                                        fmu_var_causality
+                                            .insert(fmu_var_name.to_string(), fmu_var_caus);
+                                        fmu_var_dims.insert(fmu_var_name.to_string(), fmu_var_dim);
                                     }
 
                                     // Load the FMU instance
@@ -611,27 +637,21 @@ impl FmuDriverRust {
                             }
 
                             // ----------------------------------------------------------------
-                            // After loading FMU model file to populate self.fmu_var_refs, pass
+                            // After loading FMU model file to populate fmu_var_refs, pass
                             // through the world origin values as initial values if the FMU has
                             // variables for it
 
-                            // TODO
-                            // if (
-                            //     "world_origin_latitude" in self.fmu_var_refs
-                            //     and "world_origin_longitude" in self.fmu_var_refs
-                            //     and "world_origin_altitude" in self.fmu_var_refs
-                            // ):
-                            //     self.fmu_config_json["fmu_initial_vals"][
-                            //         "world_origin_latitude"
-                            //     ] = sim_config["world"]["origin"]["latitude"]
-
-                            //     self.fmu_config_json["fmu_initial_vals"][
-                            //         "world_origin_longitude"
-                            //     ] = sim_config["world"]["origin"]["longitude"]
-
-                            //     self.fmu_config_json["fmu_initial_vals"][
-                            //         "world_origin_altitude"
-                            //     ] = sim_config["world"]["origin"]["altitude"]
+                            if fmu_var_refs.contains_key("world_origin_latitude")
+                                && fmu_var_refs.contains_key("world_origin_longitude")
+                                && fmu_var_refs.contains_key("world_origin_altitude")
+                            {
+                                fmu_config_json["fmu_initial_vals"]["world_origin_latitude"] =
+                                    sim_config["world"]["origin"]["latitude"].clone();
+                                fmu_config_json["fmu_initial_vals"]["world_origin_longitude"] =
+                                    sim_config["world"]["origin"]["longitude"].clone();
+                                fmu_config_json["fmu_initial_vals"]["world_origin_altitude"] =
+                                    sim_config["world"]["origin"]["altitude"].clone();
+                            }
 
                             // self._is_sim_config_loaded = True
 
@@ -640,7 +660,7 @@ impl FmuDriverRust {
 
                         "start" => {
                             info!("[{}] Received orchestrator start command.", fmu_id);
-                            // # Save sim start time from the orchestrator
+                            // # Save sim start time from the orchestrator (not used anywhere yet)
                             let sim_start_time_sec = msg_json
                                 .pointer("/parameters/sim_start_time/sec")
                                 .expect(
@@ -655,6 +675,7 @@ impl FmuDriverRust {
                                 sim_start_time_sec as i32,
                                 sim_start_time_nanosec as u32,
                             );
+                            info!("[{}] Sim start time: {:?}", fmu_id, sim_start_time);
 
                             let initial_timestamp = metadata.timestamp_sim;
 
@@ -744,7 +765,7 @@ impl FmuDriverRust {
                     {
                         // self.step_fmu(simtime_as_sec)
                         if let Some(fmu_model_ref) = fmu_model.as_mut() {
-                            let simtime_sec = timestamp_sim.to_sec();
+                            let simtime_sec = round_microsec(timestamp_sim.to_sec());
                             let cur_step_sec = simtime_sec - fmu_time;
                             if cur_step_sec < 0.0 {
                                 warn!(
@@ -778,22 +799,73 @@ impl FmuDriverRust {
                                     );
 
                                     // Advance the time
-                                    fmu_time = last_successful_time;
+                                    fmu_time = round_microsec(last_successful_time);
 
                                     info!("[{}] FMU step done, fmu_time: {}", fmu_id, fmu_time);
 
                                     // ------------------------------------------------------------
-                                    // Read outputs from the FMU to update self.fmu_data
+                                    // Read outputs from the FMU
 
-                                    // Store latest values for all FMU in/output variables
+                                    // Store latest values for all FMU in/output variables in fmu_data_* maps
+                                    for (fmu_var, fmu_var_type) in fmu_var_types.iter() {
+                                        // Read the FMU variable value based on its type
+                                        match fmu_var_type {
+                                            VariableType::FmiFloat64 => {
+                                                let var_ref = fmu_var_refs
+                                                    .get(fmu_var)
+                                                    .expect("FMU variable reference not found.");
+                                                let var_dim = fmu_var_dims
+                                                    .get(fmu_var)
+                                                    .expect("FMU variable dimensions not found.");
+                                                let var_dim_tot =
+                                                    var_dim.iter().product::<u64>() as usize;
+                                                let mut values: Vec<f64> = vec![0.0; var_dim_tot];
 
-                                    // Process auxiliary FMU outputs to topics
+                                                let _ = fmu_instance
+                                                    .get_float64(&[*var_ref], &mut values);
 
-                                    // Debug test read variable
-                                    let mut ball_h = [0.0];
-                                    let ball_h_vrs = [1];
-                                    let _ = fmu_instance.get_float64(&ball_h_vrs, &mut ball_h);
-                                    println!("ball_h: {}", ball_h[0]);
+                                                fmu_data_f64.insert(fmu_var.clone(), values);
+                                            }
+                                            VariableType::FmiInt64 => {
+                                                let var_ref = fmu_var_refs
+                                                    .get(fmu_var)
+                                                    .expect("FMU variable reference not found.");
+                                                let var_dim = fmu_var_dims
+                                                    .get(fmu_var)
+                                                    .expect("FMU variable dimensions not found.");
+                                                let var_dim_tot =
+                                                    var_dim.iter().product::<u64>() as usize;
+                                                let mut values: Vec<i64> = vec![0; var_dim_tot];
+
+                                                let _ = fmu_instance
+                                                    .get_int64(&[*var_ref], &mut values);
+
+                                                fmu_data_i64.insert(fmu_var.clone(), values);
+                                            }
+                                            // TODO Refactor into a helper function and handle other variable types
+                                            _ => {
+                                                warn!(
+                                                    "[{}] Unsupported FMU variable type: {}",
+                                                    fmu_id,
+                                                    var_type_to_string(fmu_var_type)
+                                                );
+                                            }
+                                        }
+                                    }
+
+                                    // Debug test read variables
+                                    for (fmu_var, fmu_value) in fmu_data_f64.iter() {
+                                        info!(
+                                            "[{}] FMU variable '{}' = {:?}",
+                                            fmu_id, fmu_var, fmu_value
+                                        );
+                                    }
+                                    for (fmu_var, fmu_value) in fmu_data_i64.iter() {
+                                        info!(
+                                            "[{}] FMU variable '{}' = {:?}",
+                                            fmu_id, fmu_var, fmu_value
+                                        );
+                                    }
                                 });
                             }
                         }
@@ -871,7 +943,7 @@ impl FmuDriverRust {
     }
 }
 
-fn var_type_to_string(var_type: VariableType) -> String {
+fn var_type_to_string(var_type: &VariableType) -> String {
     return match var_type {
         VariableType::FmiFloat64 => "float64".to_string(),
         VariableType::FmiFloat32 => "float32".to_string(),
