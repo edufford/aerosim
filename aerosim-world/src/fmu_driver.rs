@@ -686,13 +686,122 @@ impl FmuDriverRust {
                                     .as_mut()
                                     .expect("FMU model should be loaded")
                                     .with_fmu_instance_mut(|fmu_instance| {
-                                        // Set some base default values for all FMU input/output variables (these are
-                                        // used in initial published output at t=0 for any variables set below by
-                                        // values specified in the "fmu_initial_vals" config)
-                                        // TODO
+                                        // Read base default values for all FMU input/output variables (these are
+                                        // used in initial published output at t=0, but are overwritten when
+                                        // setting the initial values from the "fmu_initial_vals" config).
+                                        for (fmu_var, fmu_var_type) in fmu_var_types.iter() {
+                                            // Read the FMU variable value based on its type
+                                            match fmu_var_type {
+                                                VariableType::FmiFloat64 => {
+                                                    let var_ref = fmu_var_refs
+                                                        .get(fmu_var)
+                                                        .expect("FMU variable reference not found.");
+                                                    let var_dim = fmu_var_dims
+                                                        .get(fmu_var)
+                                                        .expect("FMU variable dimensions not found.");
+                                                    let var_dim_tot =
+                                                        var_dim.iter().product::<u64>() as usize;
+                                                    let mut values: Vec<f64> =
+                                                        vec![0.0; var_dim_tot];
+
+                                                    let _ = fmu_instance
+                                                        .get_float64(&[*var_ref], &mut values);
+
+                                                    fmu_data_f64.insert(fmu_var.clone(), values);
+                                                }
+                                                VariableType::FmiInt64 => {
+                                                    let var_ref = fmu_var_refs
+                                                        .get(fmu_var)
+                                                        .expect("FMU variable reference not found.");
+                                                    let var_dim = fmu_var_dims
+                                                        .get(fmu_var)
+                                                        .expect("FMU variable dimensions not found.");
+                                                    let var_dim_tot =
+                                                        var_dim.iter().product::<u64>() as usize;
+                                                    let mut values: Vec<i64> =
+                                                        vec![0; var_dim_tot];
+
+                                                    let _ = fmu_instance
+                                                        .get_int64(&[*var_ref], &mut values);
+
+                                                    fmu_data_i64.insert(fmu_var.clone(), values);
+                                                }
+                                                // TODO Refactor into a helper function and handle other variable types
+                                                _ => {
+                                                    warn!(
+                                                        "[{}] Unsupported FMU variable type: {}",
+                                                        fmu_id,
+                                                        var_type_to_string(fmu_var_type)
+                                                    );
+                                                }
+                                            }
+                                        }
 
                                         // Set initial values for FMU variables set in the "fmu_initial_vals" config
-                                        // TODO
+                                        for (init_var, init_value) in fmu_config_json.get("fmu_initial_vals").expect("Unable to get 'fmu_initial_vals' field from JSON").as_object().expect("Unable to get 'fmu_initial_vals' as object").iter() {
+                                            info!(
+                                                "[{}] Setting initial value '{}' = {:?}",
+                                                fmu_id, init_var, init_value
+                                            );
+                                            if let Some(fmu_var_ref) = fmu_var_refs.get(init_var) {
+                                                match fmu_var_types.get(init_var) {
+                                                    Some(VariableType::FmiFloat64) => {
+                                                        let value: Vec<f64>;
+                                                        if let Some(value_array) = init_value.as_array() {
+                                                            // Convert JSON array to Vec<f64>
+                                                            value = value_array
+                                                                .iter()
+                                                                .filter_map(|v| v.as_f64())
+                                                                .collect();
+                                                        } else if let Some(value_f64) = init_value.as_f64() {
+                                                            value = vec![value_f64];
+                                                        } else {
+                                                            warn!(
+                                                                "[{}] Initial value for '{}' is not a valid float64 array or value.",
+                                                                fmu_id, init_var
+                                                            );
+                                                            continue;
+                                                        }
+
+                                                        let _ = fmu_instance.set_float64(&[*fmu_var_ref], &value);
+                                                        fmu_data_f64.insert(init_var.clone(), value);
+                                                    }
+                                                    Some(VariableType::FmiInt64) => {
+                                                        let value: Vec<i64>;
+                                                        if let Some(value_array) = init_value.as_array() {
+                                                            // Convert JSON array to Vec<i64>
+                                                            value = value_array
+                                                                .iter()
+                                                                .filter_map(|v| v.as_i64())
+                                                                .collect();
+                                                        } else if let Some(value_i64) = init_value.as_i64() {
+                                                            value = vec![value_i64];
+                                                        } else {
+                                                            warn!(
+                                                                "[{}] Initial value for '{}' is not a valid int64 array or value.",
+                                                                fmu_id, init_var
+                                                            );
+                                                            continue;
+                                                        }
+
+                                                        let _ = fmu_instance.set_int64(&[*fmu_var_ref], &value);
+                                                        fmu_data_i64.insert(init_var.clone(), value);
+                                                    }
+                                                    _ => {
+                                                        warn!(
+                                                            "[{}] Unsupported FMU variable type for initial value: {}",
+                                                            fmu_id,
+                                                            var_type_to_string(fmu_var_types.get(init_var).unwrap())
+                                                        );
+                                                    }
+                                                }
+                                            } else {
+                                                warn!(
+                                                    "[{}] FMU variable '{}' not found for initial value setting.",
+                                                    fmu_id, init_var
+                                                );
+                                            }
+                                        }
 
                                         // Initialize the FMU states
                                         FmiInstance::enter_initialization_mode(
