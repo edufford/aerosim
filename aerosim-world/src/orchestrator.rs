@@ -1,8 +1,14 @@
 use ::log::{debug, error, info, warn};
 
+use log4rs::append::console::{ConsoleAppender, Target};
+use log4rs::append::file::FileAppender;
+use log4rs::config::{Appender, Root};
+use log4rs::encode::pattern::PatternEncoder;
+use log4rs::filter::threshold::ThresholdFilter;
 use pyo3::prelude::*;
 
 use std::collections::HashSet;
+use std::path::Path;
 use std::sync::{
     mpsc::{self, Receiver, Sender, TryRecvError},
     Arc, Mutex,
@@ -57,41 +63,45 @@ impl Orchestrator {
     }
 
     fn configure_logger(&self) {
-        let load_logger_with_default_config = |_| {
-            warn!("Couldn't load from log4rs.yaml file, using defaults instead.");
-            // If loading from config yaml fails, load from this JSON as a default config
-            let cfg = serde_json::json!({
-                "refresh_rate": "30 seconds",
-                "root" : {
-                    "appenders": ["stdout", "simlog"],
-                    "level": "trace"
-                },
-                "appenders": {
-                    "stdout": {
-                        "kind": "console",
-                        "filters": [
-                            {
-                                "kind": "threshold",
-                                "level": "info"
-                            }
-                        ]
-                    },
-                    "simlog": {
-                        "kind": "file",
-                        "path": "logs/aerosim.log",
-                        "encoder": {
-                            "pattern": "{d} - {m}{n}"
-                        }
-                    }
-                }
-            });
-            let config =
-                serde_json::from_str::<log4rs::config::RawConfig>(&cfg.to_string()).unwrap();
-            log4rs::init_raw_config(config)
+        let log4rs_config_file = match std::env::var("AEROSIM_ROOT") {
+            Ok(aerosim_root) => Path::new(&aerosim_root).join("log4rs.yaml"),
+            Err(_) => Path::new("log4rs.yaml").to_path_buf(),
         };
-
-        let _ = log4rs::init_file("log4rs.yaml", Default::default())
-            .or_else(load_logger_with_default_config);
+        match log4rs::init_file(&log4rs_config_file, Default::default()) {
+            Ok(_) => {
+                println!(
+                    "Logger initialized from file: {}",
+                    log4rs_config_file.to_str().expect("Invalid path")
+                );
+            }
+            Err(_e) => {
+                println!("Could not load logger configuration from log4rs.yaml. Using default configuration.");
+                let stdout = ConsoleAppender::builder().target(Target::Stdout).build();
+                let logfile = FileAppender::builder()
+                    .encoder(Box::new(PatternEncoder::new("{d} - {m}{n}")))
+                    .build("log/aerosim.log")
+                    .unwrap();
+                let config = log4rs::Config::builder()
+                    .appender(
+                        Appender::builder()
+                            .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
+                            .build("logfile", Box::new(logfile)),
+                    )
+                    .appender(
+                        Appender::builder()
+                            .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
+                            .build("stdout", Box::new(stdout)),
+                    )
+                    .build(
+                        Root::builder()
+                            .appender("logfile")
+                            .appender("stdout")
+                            .build(log::LevelFilter::Info),
+                    )
+                    .expect("Failed to build log4rs config");
+                log4rs::init_config(config).expect("Failed to initialize log4rs with config");
+            }
+        }
     }
 
     fn load(&mut self, sim_config_json_str: String) -> PyResult<()> {

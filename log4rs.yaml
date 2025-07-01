@@ -2,15 +2,19 @@ refresh_rate: 30 seconds
 appenders:
   stdout:
     kind: console
+    encoder:
+      pattern: "{d} [{t}] {m}{n}"
   simlog:
     kind: file
     path: "log/aerosim.log"
     encoder:
-      pattern: "{d} - {m}{n}"
+      pattern: "{d} [{t}] {m}{n}"
 root:
-  level: warn
+  level: info
   appenders:
     - stdout
     - simlog
 loggers:
- 
+  info:  # fmi crate logs info messages with logger target as "info"
+    level: warn  # change to "warn" level to filter out fmi info messages
+    
