@@ -331,7 +331,7 @@ impl FmuDriverRust {
                                 warn!("[{}] FMU ID not found in sim config.", fmu_id);
                             }
 
-                            info!("[{}] Received fmu_config: {:?}", fmu_id, fmu_config_json);
+                            // info!("[{}] Received fmu_config: {:?}", fmu_id, fmu_config_json);
 
                             // ----------------------------------------------------------------
                             // Process fmu_config_json
@@ -819,23 +819,149 @@ impl FmuDriverRust {
                             // Publish initial value output topics for initial timestamp
                             {
                                 // self.publish_output_data(initial_timestamp)
-                                // Publish dummy "aerosim.actor1.vehicle_state" as initial sync topic
-                                let veh_state = VehicleState::new(
-                                    ActorState::default(),
-                                    Vector3::default(),
-                                    Vector3::default(),
-                                    Vector3::default(),
-                                    Vector3::default(),
-                                );
 
-                                info!("Publishing initial sync topic vehicle_state.");
-                                let _ = middleware
-                                    .publish(
-                                        "aerosim.actor1.vehicle_state",
-                                        &veh_state,
-                                        Some(initial_timestamp),
-                                    )
-                                    .await;
+                                // Pack and publish component output topics
+                                if let Some(output_topics) =
+                                    fmu_config_json.get("component_output_topics")
+                                {
+                                    for out_topic_info in output_topics
+                                        .as_array()
+                                        .expect("Unable to get 'component_output_topics' as array")
+                                    {
+                                        let msg_type = out_topic_info
+                                            .get("msg_type")
+                                            .expect("Unable to get 'msg_type' field from JSON")
+                                            .as_str()
+                                            .expect("Unable to get 'msg_type' as string");
+                                        let out_topic = out_topic_info
+                                            .get("topic")
+                                            .expect("Unable to get 'topic' field from JSON")
+                                            .as_str()
+                                            .expect("Unable to get 'topic' as string");
+
+                                        let mut var_prefix = "".to_string();
+                                        // Override var_prefix if one is provided
+                                        if let Some(var_prefix_config) =
+                                            out_topic_info.get("var_prefix")
+                                        {
+                                            var_prefix = var_prefix_config
+                                                .as_str()
+                                                .expect("Unable to parse 'var_prefix' as string")
+                                                .to_string();
+                                        }
+
+                                        match msg_type {
+                                            "aerosim::types::VehicleState" => {
+                                                if var_prefix.is_empty() {
+                                                    var_prefix = "vehicle_state".to_string();
+                                                }
+
+                                                // Publish dummy "aerosim.actor1.vehicle_state" topic
+                                                let veh_state = VehicleState::new(
+                                                    ActorState::default(),
+                                                    Vector3::default(),
+                                                    Vector3::default(),
+                                                    Vector3::default(),
+                                                    Vector3::default(),
+                                                );
+
+                                                // Pack data from FMU into output message struct
+
+                                                // TODO with bevy_reflect
+
+                                                info!(
+                                                    "[{}] Publishing initial sync topic vehicle_state to {}.",
+                                                    fmu_id, out_topic
+                                                );
+                                                let _ = middleware
+                                                    .publish(
+                                                        out_topic,
+                                                        &veh_state,
+                                                        Some(initial_timestamp),
+                                                    )
+                                                    .await;
+                                            }
+                                            _ => {
+                                                warn!(
+                                                    "[{}] Unsupported output topic type: {}",
+                                                    fmu_id, msg_type
+                                                );
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Pack and publish auxiliary output topics as JsonData
+                                if let Some(aux_out_mapping) =
+                                    fmu_config_json.get("fmu_aux_output_mapping")
+                                {
+                                    for (out_topic, out_var_map) in aux_out_mapping
+                                        .as_object()
+                                        .expect("Unable to get 'fmu_aux_output_mapping' as object")
+                                        .iter()
+                                    {
+                                        let mut data_dict = serde_json::Map::new();
+                                        for (out_topic_var, out_fmu_var) in out_var_map
+                                            .as_object()
+                                            .expect("Unable to get 'out_var_map' as object")
+                                            .iter()
+                                        {
+                                            let out_fmu_var_str = out_fmu_var
+                                                .as_str()
+                                                .expect("FMU variable name should be a string");
+                                            let out_fmu_var_type = fmu_var_types
+                                                .get(out_fmu_var_str)
+                                                .expect("FMU variable type not found.");
+
+                                            match out_fmu_var_type {
+                                                VariableType::FmiFloat64 => {
+                                                    if let Some(out_value) =
+                                                        fmu_data_f64.get(out_fmu_var_str)
+                                                    {
+                                                        if out_value.len() == 1 {
+                                                            // Single value, insert directly
+                                                            data_dict.insert(
+                                                                out_topic_var.to_string(),
+                                                                out_value[0].into(),
+                                                            );
+                                                        } else {
+                                                            // Array, insert as array
+                                                            data_dict.insert(
+                                                                out_topic_var.to_string(),
+                                                                out_value.clone().into(),
+                                                            );
+                                                        }
+                                                    } else {
+                                                        warn!(
+                                                            "[{}] FMU variable '{}' not found for output topic '{}'.",
+                                                            fmu_id, out_fmu_var_str, out_topic
+                                                        );
+                                                    }
+                                                }
+                                                _ => {
+                                                    warn!(
+                                                        "[{}] Unsupported FMU variable type '{}' for output topic '{}'.",
+                                                        fmu_id,
+                                                        var_type_to_string(out_fmu_var_type),
+                                                        out_topic
+                                                    );
+                                                }
+                                            };
+                                        }
+
+                                        let data_msg: JsonData = JsonData::new(data_dict.into());
+
+                                        let _ = middleware
+                                            .publish(out_topic, &data_msg, Some(initial_timestamp))
+                                            .await;
+
+                                        // info!(
+                                        //     "[{}] Published auxiliary output topic '{}' with data: {:?}",
+                                        //     fmu_id, out_topic, data_msg
+                                        // );
+                                    }
+                                }
                             }
 
                             // self._is_sim_started = True
