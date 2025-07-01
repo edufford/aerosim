@@ -1,6 +1,7 @@
 pub mod components;
 pub mod data_manager;
 pub mod fmu_driver;
+pub mod fmu_utils;
 pub mod logging;
 pub mod orchestrator;
 pub mod scene_graph;

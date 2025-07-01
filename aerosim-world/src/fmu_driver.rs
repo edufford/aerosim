@@ -29,6 +29,8 @@ use aerosim_data::{
     types::{ActorState, JsonData, TimeStamp, TypeSupport, Vector3, VehicleState},
 };
 
+use crate::fmu_utils::fmi3_var_type_to_string;
+
 #[pyclass]
 pub struct FmuDriverRust {
     #[pyo3(get)]
@@ -602,7 +604,7 @@ impl FmuDriverRust {
                                                 fmu_id,
                                                 fmu_var_ref,
                                                 fmu_var_name,
-                                                var_type_to_string(&fmu_var_type),
+                                                fmi3_var_type_to_string(&fmu_var_type),
                                                 fmu_var_dim,
                                                 fmu_var_caus
                                             );
@@ -732,7 +734,7 @@ impl FmuDriverRust {
                                                     warn!(
                                                         "[{}] Unsupported FMU variable type: {}",
                                                         fmu_id,
-                                                        var_type_to_string(fmu_var_type)
+                                                        fmi3_var_type_to_string(fmu_var_type)
                                                     );
                                                 }
                                             }
@@ -792,7 +794,7 @@ impl FmuDriverRust {
                                                         warn!(
                                                             "[{}] Unsupported FMU variable type for initial value: {}",
                                                             fmu_id,
-                                                            var_type_to_string(fmu_var_types.get(init_var).unwrap())
+                                                            fmi3_var_type_to_string(fmu_var_types.get(init_var).unwrap())
                                                         );
                                                     }
                                                 }
@@ -1027,7 +1029,7 @@ impl FmuDriverRust {
                                                     warn!(
                                                         "[{}] Unsupported FMU variable type '{}' for output topic '{}'.",
                                                         fmu_id,
-                                                        var_type_to_string(out_fmu_var_type),
+                                                        fmi3_var_type_to_string(out_fmu_var_type),
                                                         out_topic
                                                     );
                                                 }
@@ -1166,7 +1168,7 @@ impl FmuDriverRust {
                                                 warn!(
                                                     "[{}] Unsupported FMU variable type: {}",
                                                     fmu_id,
-                                                    var_type_to_string(fmu_var_type)
+                                                    fmi3_var_type_to_string(fmu_var_type)
                                                 );
                                             }
                                         }
@@ -1261,24 +1263,6 @@ impl FmuDriverRust {
     }
 }
 
-fn var_type_to_string(var_type: &VariableType) -> String {
-    return match var_type {
-        VariableType::FmiFloat64 => "float64".to_string(),
-        VariableType::FmiFloat32 => "float32".to_string(),
-        VariableType::FmiInt64 => "int64".to_string(),
-        VariableType::FmiInt32 => "int32".to_string(),
-        VariableType::FmiInt16 => "int16".to_string(),
-        VariableType::FmiInt8 => "int8".to_string(),
-        VariableType::FmiUInt64 => "uint64".to_string(),
-        VariableType::FmiUInt32 => "uint32".to_string(),
-        VariableType::FmiUInt16 => "uint16".to_string(),
-        VariableType::FmiUInt8 => "uint8".to_string(),
-        VariableType::FmiBoolean => "bool".to_string(),
-        VariableType::FmiString => "string".to_string(),
-        _ => "unknown".to_string(),
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1325,7 +1309,7 @@ mod tests {
                 "FMU ref={} var={} type={} dim={:?} causality={:?}",
                 fmu_var_ref,
                 fmu_var_name,
-                var_type_to_string(&fmu_var_type),
+                fmi3_var_type_to_string(&fmu_var_type),
                 fmu_var_dim,
                 fmu_var_caus
             );
@@ -1434,7 +1418,7 @@ mod tests {
                 "FMU ref={} var={} type={} dim={:?} causality={:?}",
                 fmu_var_ref,
                 fmu_var_name,
-                var_type_to_string(&fmu_var_type),
+                fmi3_var_type_to_string(&fmu_var_type),
                 fmu_var_dim,
                 fmu_var_caus
             );
