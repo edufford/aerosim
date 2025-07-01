@@ -2,6 +2,7 @@ use crate::{types::PyTypeSupport, AerosimMessage};
 
 use super::actor::ActorState;
 use super::geometry::Vector3;
+use bevy_reflect::Reflect;
 use pyo3::prelude::*;
 use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
@@ -46,7 +47,7 @@ impl VehicleType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 #[pyclass(get_all)]
 pub struct VehicleState {
     pub state: ActorState,

@@ -1,4 +1,5 @@
 use ::log::{info, warn};
+use bevy_reflect::GetPath;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
@@ -25,7 +26,7 @@ use aerosim_data::{
     middleware::{
         Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry, Serializer,
     },
-    types::{ActorState, JsonData, TimeStamp, Vector3, VehicleState},
+    types::{ActorState, JsonData, TimeStamp, TypeSupport, Vector3, VehicleState},
 };
 
 #[pyclass]
@@ -857,7 +858,7 @@ impl FmuDriverRust {
                                                 }
 
                                                 // Publish dummy "aerosim.actor1.vehicle_state" topic
-                                                let veh_state = VehicleState::new(
+                                                let mut msg_struct = VehicleState::new(
                                                     ActorState::default(),
                                                     Vector3::default(),
                                                     Vector3::default(),
@@ -868,6 +869,89 @@ impl FmuDriverRust {
                                                 // Pack data from FMU into output message struct
 
                                                 // TODO with bevy_reflect
+                                                let flat_fields = TypeSupport::get_flat_field_names(
+                                                    &msg_struct,
+                                                    "",
+                                                );
+
+                                                // for field_name in &flat_fields {
+                                                //     info!(
+                                                //         "[{}] VehicleState field: {}",
+                                                //         fmu_id, field_name
+                                                //     );
+                                                // }
+
+                                                // Test setting some values in fmu_data_f64 manually
+                                                fmu_data_f64.insert(
+                                                    "vehicle_state.state.pose.position.x"
+                                                        .to_string(),
+                                                    vec![1.0],
+                                                );
+                                                fmu_data_f64.insert(
+                                                    "vehicle_state.state.pose.position.y"
+                                                        .to_string(),
+                                                    vec![2.0],
+                                                );
+                                                fmu_data_f64.insert(
+                                                    "vehicle_state.state.pose.position.z"
+                                                        .to_string(),
+                                                    vec![3.0],
+                                                );
+
+                                                // Set the fields in the message struct
+                                                // using the flat field names and FMU data.
+                                                for field_name in &flat_fields {
+                                                    let fmu_var_name =
+                                                        var_prefix.clone() + "." + field_name;
+                                                    match fmu_var_types.get(&fmu_var_name) {
+                                                        Some(VariableType::FmiFloat64) => {
+                                                            if let Some(value) =
+                                                                fmu_data_f64.get(&fmu_var_name)
+                                                            {
+                                                                info!(
+                                                                    "[{}] Setting field {} to f64 value: {:?}",
+                                                                    fmu_id, fmu_var_name, value[0]
+                                                                );
+                                                                *msg_struct
+                                                                    .path_mut::<f64>(
+                                                                        field_name.as_str(),
+                                                                    )
+                                                                    .unwrap() = value[0];
+                                                            } else {
+                                                                warn!(
+                                                                    "[{}] FMU variable '{}' not found for output topic '{}'.",
+                                                                    fmu_id, fmu_var_name, out_topic
+                                                                );
+                                                            }
+                                                        }
+                                                        Some(VariableType::FmiInt64) => {
+                                                            if let Some(value) =
+                                                                fmu_data_i64.get(&fmu_var_name)
+                                                            {
+                                                                info!(
+                                                                    "[{}] Setting field {} to i64 value: {:?}",
+                                                                    fmu_id, fmu_var_name, value
+                                                                );
+                                                                *msg_struct
+                                                                    .path_mut::<i64>(
+                                                                        field_name.as_str(),
+                                                                    )
+                                                                    .unwrap() = value[0];
+                                                            } else {
+                                                                warn!(
+                                                                    "[{}] FMU variable '{}' not found for output topic '{}'.",
+                                                                    fmu_id, fmu_var_name, out_topic
+                                                                );
+                                                            }
+                                                        }
+                                                        _ => {
+                                                            warn!(
+                                                                "[{}] Unsupported FMU variable type for field '{}'.",
+                                                                fmu_id, fmu_var_name
+                                                            );
+                                                        }
+                                                    }
+                                                }
 
                                                 info!(
                                                     "[{}] Publishing initial sync topic vehicle_state to {}.",
@@ -876,7 +960,7 @@ impl FmuDriverRust {
                                                 let _ = middleware
                                                     .publish(
                                                         out_topic,
-                                                        &veh_state,
+                                                        &msg_struct,
                                                         Some(initial_timestamp),
                                                     )
                                                     .await;
@@ -1242,7 +1326,7 @@ mod tests {
                 "FMU ref={} var={} type={} dim={:?} causality={:?}",
                 fmu_var_ref,
                 fmu_var_name,
-                var_type_to_string(fmu_var_type),
+                var_type_to_string(&fmu_var_type),
                 fmu_var_dim,
                 fmu_var_caus
             );
@@ -1351,7 +1435,7 @@ mod tests {
                 "FMU ref={} var={} type={} dim={:?} causality={:?}",
                 fmu_var_ref,
                 fmu_var_name,
-                var_type_to_string(fmu_var_type),
+                var_type_to_string(&fmu_var_type),
                 fmu_var_dim,
                 fmu_var_caus
             );
