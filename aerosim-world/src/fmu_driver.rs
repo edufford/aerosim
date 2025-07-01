@@ -1205,7 +1205,6 @@ impl FmuDriverRust {
                             Vector3::default(),
                         );
 
-                        let timestamp_sim = TimeStamp { sec: 0, nanosec: 0 };
                         let _ = middleware
                             .publish(
                                 "aerosim.actor1.vehicle_state",
