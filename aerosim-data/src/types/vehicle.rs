@@ -47,7 +47,7 @@ impl VehicleType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 #[pyclass(get_all)]
 pub struct VehicleState {
     pub state: ActorState,

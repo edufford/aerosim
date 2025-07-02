@@ -97,4 +97,36 @@ impl TypeSupport {
 
         results
     }
+
+    pub fn get_flat_fields_from_json_object(
+        json_value: &serde_json::Value,
+        prefix: &str,
+    ) -> Vec<String> {
+        let mut results = Vec::new();
+
+        if let serde_json::Value::Object(map) = json_value {
+            for (key, value) in map {
+                let full_name = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{}.{}", prefix, key)
+                };
+
+                match value {
+                    serde_json::Value::Object(_) => {
+                        results.extend(Self::get_flat_fields_from_json_object(value, &full_name));
+                    }
+                    _ => {
+                        results.push(full_name);
+                    }
+                }
+            }
+        }
+
+        results
+    }
+
+    pub fn dot_notation_to_json_path(dot_notation: &str) -> String {
+        "/".to_string() + &dot_notation.replace('.', "/")
+    }
 }

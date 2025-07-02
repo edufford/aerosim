@@ -261,6 +261,8 @@ impl FmuDriverRust {
 
         let mut running = true;
 
+        let serializer = middleware.get_serializer();
+
         let mut fmu_config_json: Value = serde_json::Value::Null;
 
         let mut fmu_var_refs: HashMap<String, u32> = HashMap::new();
@@ -860,21 +862,22 @@ impl FmuDriverRust {
                                                 }
 
                                                 // Publish dummy "aerosim.actor1.vehicle_state" topic
-                                                let mut msg_struct = VehicleState::new(
-                                                    ActorState::default(),
-                                                    Vector3::default(),
-                                                    Vector3::default(),
-                                                    Vector3::default(),
-                                                    Vector3::default(),
-                                                );
+                                                let mut msg_struct = VehicleState::default();
 
                                                 // Pack data from FMU into output message struct
 
+                                                let mut msg_struct_json = serde_json::to_value(&msg_struct).expect("Unable to serialize VehicleState struct to JSON");
+                                                let flat_fields =
+                                                    TypeSupport::get_flat_fields_from_json_object(
+                                                        &msg_struct_json,
+                                                        "",
+                                                    );
+
                                                 // TODO with bevy_reflect
-                                                let flat_fields = TypeSupport::get_flat_field_names(
-                                                    &msg_struct,
-                                                    "",
-                                                );
+                                                // let flat_fields = TypeSupport::get_flat_field_names(
+                                                //     &msg_struct,
+                                                //     "",
+                                                // );
 
                                                 // for field_name in &flat_fields {
                                                 //     info!(
@@ -914,11 +917,14 @@ impl FmuDriverRust {
                                                                     "[{}] Setting field {} to f64 value: {:?}",
                                                                     fmu_id, fmu_var_name, value[0]
                                                                 );
-                                                                *msg_struct
-                                                                    .path_mut::<f64>(
-                                                                        field_name.as_str(),
-                                                                    )
-                                                                    .unwrap() = value[0];
+                                                                // *msg_struct
+                                                                //     .path_mut::<f64>(
+                                                                //         field_name.as_str(),
+                                                                //     )
+                                                                //     .unwrap() = value[0];
+
+                                                                let json_path = TypeSupport::dot_notation_to_json_path(field_name);
+                                                                *msg_struct_json.pointer_mut(&json_path).expect("Unable to get field from VehicleState struct") = value[0].into();
                                                             } else {
                                                                 warn!(
                                                                     "[{}] FMU variable '{}' not found for output topic '{}'.",
@@ -934,11 +940,14 @@ impl FmuDriverRust {
                                                                     "[{}] Setting field {} to i64 value: {:?}",
                                                                     fmu_id, fmu_var_name, value
                                                                 );
-                                                                *msg_struct
-                                                                    .path_mut::<i64>(
-                                                                        field_name.as_str(),
-                                                                    )
-                                                                    .unwrap() = value[0];
+                                                                // *msg_struct
+                                                                //     .path_mut::<i64>(
+                                                                //         field_name.as_str(),
+                                                                //     )
+                                                                //     .unwrap() = value[0];
+
+                                                                let json_path = TypeSupport::dot_notation_to_json_path(field_name);
+                                                                *msg_struct_json.pointer_mut(&json_path).expect("Unable to get field from VehicleState struct") = value[0].into();
                                                             } else {
                                                                 warn!(
                                                                     "[{}] FMU variable '{}' not found for output topic '{}'.",
@@ -959,11 +968,28 @@ impl FmuDriverRust {
                                                     "[{}] Publishing initial sync topic vehicle_state to {}.",
                                                     fmu_id, out_topic
                                                 );
+
+                                                // let _ = middleware
+                                                //     .publish(
+                                                //         out_topic,
+                                                //         &msg_struct,
+                                                //         Some(initial_timestamp),
+                                                //     )
+                                                //     .await;
+
+                                                let metadata = Metadata::new(
+                                                    out_topic,
+                                                    msg_type,
+                                                    Some(initial_timestamp),
+                                                    None,
+                                                );
+                                                let serialized_msg = serializer.from_json::<VehicleState>(&metadata, msg_struct_json).expect("Unable to serialize VehicleState struct from JSON");
+
                                                 let _ = middleware
-                                                    .publish(
+                                                    .publish_raw(
+                                                        msg_type,
                                                         out_topic,
-                                                        &msg_struct,
-                                                        Some(initial_timestamp),
+                                                        &serialized_msg,
                                                     )
                                                     .await;
                                             }
