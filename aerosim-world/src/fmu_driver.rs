@@ -1,11 +1,10 @@
 use ::log::{info, warn};
-use bevy_reflect::GetPath;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::{
     mpsc::{self, Receiver, Sender, TryRecvError},
-    Arc,
+    Arc, Mutex,
 };
 use std::thread::JoinHandle;
 
@@ -26,7 +25,7 @@ use aerosim_data::{
     middleware::{
         Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry, Serializer,
     },
-    types::{JsonData, TimeStamp},
+    types::{AerosimMessageEnum, JsonData, TimeStamp},
 };
 
 use crate::fmu_utils::{
@@ -279,6 +278,9 @@ impl FmuDriverRust {
         let mut fmu_model: Option<FmiModel> = None;
         let mut fmu_time: f64 = 0.0;
 
+        let input_data_map: Arc<Mutex<HashMap<String, (TimeStamp, AerosimMessageEnum)>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
         let mut fmu_data_f64: HashMap<String, Vec<f64>> = HashMap::new();
         let mut fmu_data_i64: HashMap<String, Vec<i64>> = HashMap::new();
 
@@ -413,6 +415,7 @@ impl FmuDriverRust {
                                     // Prepare necessary components to be moved into the callback scope.
                                     let serializer = middleware.get_serializer();
                                     let fmu_id_str = fmu_id.to_string();
+                                    let input_data_map = Arc::clone(&input_data_map);
 
                                     // TODO Refactor this into input_data_callback()
                                     Box::new(move |payload: &[u8]| {
@@ -424,29 +427,33 @@ impl FmuDriverRust {
                                                 "Could not deserialize metadata from payload"
                                             ))?;
 
-                                        // TODO Handle all input data in this callback
-                                        info!(
-                                            "[{}] Subscribe all callback received topic: {}",
-                                            fmu_id_str, metadata.topic
-                                        );
+                                        let mut input_data_map_lock = input_data_map.lock().unwrap();
 
-                                        match metadata.type_name.as_str() {
-                                            "aerosim::types::JsonData" => {
-                                                let data = serializer
-                                                    .deserialize_data::<JsonData>(payload)
-                                                    .expect("Error deserializing JsonData");
-                                                info!(
-                                                    "Deserialized JsonData: {:?}",
-                                                    data.get_data()
-                                                );
-                                            }
-                                            _ => {
-                                                warn!(
-                                                    "Skipping deserialization of unknown type: {}",
-                                                    metadata.type_name
-                                                );
-                                            }
+                                        // Check if the topic already has data and if the received data is
+                                        // older than the existing data
+                                        if input_data_map_lock.contains_key(&metadata.topic)
+                                            && metadata.timestamp_sim
+                                                < input_data_map_lock.get(&metadata.topic).unwrap().0
+                                        {
+                                            info!(
+                                                "[{}] Ignoring older data for topic: {}",
+                                                fmu_id_str, metadata.topic
+                                            );
+                                            return Ok(());
                                         }
+
+                                        let aerosim_msg = AerosimMessageEnum::deserialize(
+                                            &serializer,
+                                            &metadata.type_name,
+                                            payload,
+                                        )
+                                        .expect("Error deserializing FMU input message to AerosimMessageEnum.");
+
+                                        // Insert the new data into the input data map
+                                        input_data_map_lock.insert(
+                                            metadata.topic.clone(),
+                                            (metadata.timestamp_sim, aerosim_msg),
+                                        );
 
                                         Ok(())
                                     })

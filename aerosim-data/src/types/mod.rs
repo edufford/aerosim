@@ -36,6 +36,8 @@ pub use trajectory::TrajectoryVisualization;
 pub use vehicle::VehicleState;
 pub use vehicle::VehicleType;
 
+use crate::middleware::{AerosimDeserializeEnum, Serializer, SerializerEnum};
+
 #[macro_use]
 mod registry;
 pub use registry::TypeRegistry;
@@ -47,6 +49,23 @@ use serde::{Deserialize, Serialize};
 
 pub trait AerosimMessage: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync {
     fn get_type_name() -> String;
+}
+
+#[derive(AerosimDeserializeEnum, Debug)]
+pub enum AerosimMessageEnum {
+    TimeStamp(TimeStamp),
+    Vector3(Vector3),
+    JsonData(JsonData),
+    VehicleState(VehicleState),
+    EffectorState(EffectorState),
+    AutopilotCommand(AutopilotCommand),
+    FlightControlCommand(FlightControlCommand),
+    AircraftEffectorCommand(AircraftEffectorCommand),
+    PrimaryFlightDisplayData(PrimaryFlightDisplayData),
+    TrajectoryVisualization(TrajectoryVisualization),
+    GNSS(GNSS),
+    ADSB(ADSB),
+    IMU(IMU),
 }
 
 register_types!(
