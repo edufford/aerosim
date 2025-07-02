@@ -1,4 +1,5 @@
 use ::log::{info, warn};
+use bevy_reflect::GetPath;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
@@ -25,7 +26,7 @@ use aerosim_data::{
     middleware::{
         Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry, Serializer,
     },
-    types::{AerosimMessageEnum, JsonData, TimeStamp},
+    types::{AerosimMessageEnum, JsonData, TimeStamp, TypeSupport},
 };
 
 use crate::fmu_utils::{
@@ -431,10 +432,7 @@ impl FmuDriverRust {
 
                                         // Check if the topic already has data and if the received data is
                                         // older than the existing data
-                                        if input_data_map_lock.contains_key(&metadata.topic)
-                                            && metadata.timestamp_sim
-                                                < input_data_map_lock.get(&metadata.topic).unwrap().0
-                                        {
+                                        if input_data_map_lock.contains_key(&metadata.topic) && metadata.is_sim_time_valid() && metadata.timestamp_sim < input_data_map_lock.get(&metadata.topic).unwrap().0 {
                                             info!(
                                                 "[{}] Ignoring older data for topic: {}",
                                                 fmu_id_str, metadata.topic
@@ -916,9 +914,132 @@ impl FmuDriverRust {
                             } else {
                                 fmu_model_ref.with_fmu_instance_mut(|fmu_instance| {
                                     // ------------------------------------------------------------
-                                    // Write inputs to the FMU from self.in_topic_data and fmu_aux_input_mapping
+                                    // Write inputs to the FMU
 
-                                    // Process every input topic that has been received and stored in self.in_topic_data
+                                    // TODO Process every input topic that has been received and stored in input_data_map
+                                    {
+                                        let mut input_data_map_lock =
+                                            input_data_map.lock().unwrap();
+                                        let cur_input_data = input_data_map_lock.drain();
+
+                                        for (input_topic, (timestamp, aerosim_msg)) in
+                                            cur_input_data
+                                        {
+                                            info!(
+                                                "[{}] Writing input topic '{}' at timestamp: {:?}",
+                                                fmu_id, input_topic, timestamp
+                                            );
+
+                                            match aerosim_msg {
+                                                AerosimMessageEnum::VehicleState(vehicle_state) => {
+                                                    let flat_fields =
+                                                        TypeSupport::get_flat_field_names(
+                                                            &vehicle_state,
+                                                            "",
+                                                        );
+
+                                                    for field in flat_fields {
+                                                        info!(
+                                                            "[{}] VehicleState field: {}",
+                                                            fmu_id, field
+                                                        );
+
+                                                        let var_ref = fmu_var_refs
+                                                            .get(&field)
+                                                            .expect("FMU variable reference not found.");
+
+                                                        let var_type = fmu_var_types
+                                                            .get(&field)
+                                                            .expect("FMU variable type not found.");
+
+                                                        match var_type {
+                                                            VariableType::FmiFloat64 => {
+                                                                let new_val_f64 = *vehicle_state.path::<f64>(field.as_str())
+                                                                    .expect("Unable to get field value from VehicleState.");
+
+                                                                let values = vec![new_val_f64];
+
+                                                                let _ = fmu_instance.set_float64(&[*var_ref], &values);
+                                                            }
+                                                            _ => {
+                                                                warn!(
+                                                                    "[{}] Unsupported FMU variable type for '{}': {}",
+                                                                    fmu_id,
+                                                                    field,
+                                                                    fmi3_var_type_to_string(var_type)
+                                                                );
+                                                                continue;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                AerosimMessageEnum::JsonData(json_data) => {
+                                                    let json_value = json_data
+                                                        .get_data()
+                                                        .expect("Unable to get JsonData payload.");
+                                                    let flat_fields =
+                                                        TypeSupport::get_flat_fields_from_json_object(
+                                                            &json_value,
+                                                            "",
+                                                        );
+
+                                                    for field in flat_fields {
+                                                        let var_ref = fmu_var_refs
+                                                            .get(&field)
+                                                            .expect("FMU variable reference not found.");
+
+                                                        let var_type = fmu_var_types
+                                                            .get(&field)
+                                                            .expect("FMU variable type not found.");
+
+                                                            let json_path = TypeSupport::dot_notation_to_json_path(&field);
+                                                        let new_val = json_value.pointer(&json_path).unwrap();
+
+                                                        match var_type {
+                                                            VariableType::FmiFloat64 => {
+                                                                let values: Vec<f64>;
+                                                                if let Some(new_val_array) = new_val.as_array() {
+                                                                    values = new_val_array
+                                                                        .iter()
+                                                                        .filter_map(|v| v.as_f64())
+                                                                        .collect();
+
+                                                                } else if let Some(new_val_f64) = new_val.as_f64() {
+                                                                    values = vec![new_val_f64];
+                                                                } else {
+                                                                    warn!(
+                                                                        "[{}] Unsupported value type for FMU variable '{}': {:?}",
+                                                                        fmu_id, field, new_val
+                                                                    );
+                                                                    continue;
+                                                                }
+
+                                                                info!("[{}] Setting FMU variable '{}' to values: {:?}", fmu_id, field, values);
+                                                                let _ = fmu_instance.set_float64(&[*var_ref], &values);
+                                                            }
+                                                            _ => {
+                                                                warn!(
+                                                                    "[{}] Unsupported FMU variable type for '{}': {}",
+                                                                    fmu_id,
+                                                                    field,
+                                                                    fmi3_var_type_to_string(var_type)
+                                                                );
+                                                                continue;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                _ => {
+                                                    warn!(
+                                                        "[{}] Unsupported input message type: {:?}",
+                                                        fmu_id, aerosim_msg
+                                                    );
+                                                }
+                                            }
+
+                                            // Write the input data to the FMU instance
+                                        }
+                                    }
 
                                     // ------------------------------------------------------------
                                     // Do one step of the FMU
