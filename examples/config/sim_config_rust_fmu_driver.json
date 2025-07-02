@@ -442,11 +442,23 @@
             }
         ]
     },
-    "renderers": [],
+    "renderers": [
+        {
+            "renderer_id": "0",
+            "role": "primary",
+            "sensors": [
+                "rgb_camera_pilot",
+                "rgb_camera_chase"
+            ],
+            "viewport_config": {
+                "active_camera": "rgb_camera_chase"
+            }
+        }
+    ],
     "fmu_models": [
         {
             "id": "evtol_vehicle",
-            "fmu_model_path": "examples/fmu/Int64ArrayBouncingBall.fmu",
+            "fmu_model_path": "examples/fmu/evtol_vehicle_fmu.fmu",
             "component_type": "dynamics_model",
             "component_input_topics": [],
             "component_output_topics": [

@@ -26,10 +26,12 @@ use aerosim_data::{
     middleware::{
         Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry, Serializer,
     },
-    types::{ActorState, JsonData, TimeStamp, TypeSupport, Vector3, VehicleState},
+    types::{JsonData, TimeStamp},
 };
 
-use crate::fmu_utils::fmi3_var_type_to_string;
+use crate::fmu_utils::{
+    fmi3_var_type_to_string, publish_aux_output_topics_fmu3, publish_component_output_topics_fmu3,
+};
 
 #[pyclass]
 pub struct FmuDriverRust {
@@ -822,259 +824,44 @@ impl FmuDriverRust {
                             }
 
                             // Publish initial value output topics for initial timestamp
+
                             {
-                                // self.publish_output_data(initial_timestamp)
-
-                                // Pack and publish component output topics
-                                if let Some(output_topics) =
-                                    fmu_config_json.get("component_output_topics")
-                                {
-                                    for out_topic_info in output_topics
-                                        .as_array()
-                                        .expect("Unable to get 'component_output_topics' as array")
-                                    {
-                                        let msg_type = out_topic_info
-                                            .get("msg_type")
-                                            .expect("Unable to get 'msg_type' field from JSON")
-                                            .as_str()
-                                            .expect("Unable to get 'msg_type' as string");
-                                        let out_topic = out_topic_info
-                                            .get("topic")
-                                            .expect("Unable to get 'topic' field from JSON")
-                                            .as_str()
-                                            .expect("Unable to get 'topic' as string");
-
-                                        let mut var_prefix = "".to_string();
-                                        // Override var_prefix if one is provided
-                                        if let Some(var_prefix_config) =
-                                            out_topic_info.get("var_prefix")
-                                        {
-                                            var_prefix = var_prefix_config
-                                                .as_str()
-                                                .expect("Unable to parse 'var_prefix' as string")
-                                                .to_string();
-                                        }
-
-                                        match msg_type {
-                                            "aerosim::types::VehicleState" => {
-                                                if var_prefix.is_empty() {
-                                                    var_prefix = "vehicle_state".to_string();
-                                                }
-
-                                                // Publish dummy "aerosim.actor1.vehicle_state" topic
-                                                let mut msg_struct = VehicleState::default();
-
-                                                // Pack data from FMU into output message struct
-
-                                                let mut msg_struct_json = serde_json::to_value(&msg_struct).expect("Unable to serialize VehicleState struct to JSON");
-                                                let flat_fields =
-                                                    TypeSupport::get_flat_fields_from_json_object(
-                                                        &msg_struct_json,
-                                                        "",
-                                                    );
-
-                                                // TODO with bevy_reflect
-                                                // let flat_fields = TypeSupport::get_flat_field_names(
-                                                //     &msg_struct,
-                                                //     "",
-                                                // );
-
-                                                // for field_name in &flat_fields {
-                                                //     info!(
-                                                //         "[{}] VehicleState field: {}",
-                                                //         fmu_id, field_name
-                                                //     );
-                                                // }
-
-                                                // Test setting some values in fmu_data_f64 manually
-                                                fmu_data_f64.insert(
-                                                    "vehicle_state.state.pose.position.x"
-                                                        .to_string(),
-                                                    vec![1.0],
-                                                );
-                                                fmu_data_f64.insert(
-                                                    "vehicle_state.state.pose.position.y"
-                                                        .to_string(),
-                                                    vec![2.0],
-                                                );
-                                                fmu_data_f64.insert(
-                                                    "vehicle_state.state.pose.position.z"
-                                                        .to_string(),
-                                                    vec![3.0],
-                                                );
-
-                                                // Set the fields in the message struct
-                                                // using the flat field names and FMU data.
-                                                for field_name in &flat_fields {
-                                                    let fmu_var_name =
-                                                        var_prefix.clone() + "." + field_name;
-                                                    match fmu_var_types.get(&fmu_var_name) {
-                                                        Some(VariableType::FmiFloat64) => {
-                                                            if let Some(value) =
-                                                                fmu_data_f64.get(&fmu_var_name)
-                                                            {
-                                                                info!(
-                                                                    "[{}] Setting field {} to f64 value: {:?}",
-                                                                    fmu_id, fmu_var_name, value[0]
-                                                                );
-                                                                // *msg_struct
-                                                                //     .path_mut::<f64>(
-                                                                //         field_name.as_str(),
-                                                                //     )
-                                                                //     .unwrap() = value[0];
-
-                                                                let json_path = TypeSupport::dot_notation_to_json_path(field_name);
-                                                                *msg_struct_json.pointer_mut(&json_path).expect("Unable to get field from VehicleState struct") = value[0].into();
-                                                            } else {
-                                                                warn!(
-                                                                    "[{}] FMU variable '{}' not found for output topic '{}'.",
-                                                                    fmu_id, fmu_var_name, out_topic
-                                                                );
-                                                            }
-                                                        }
-                                                        Some(VariableType::FmiInt64) => {
-                                                            if let Some(value) =
-                                                                fmu_data_i64.get(&fmu_var_name)
-                                                            {
-                                                                info!(
-                                                                    "[{}] Setting field {} to i64 value: {:?}",
-                                                                    fmu_id, fmu_var_name, value
-                                                                );
-                                                                // *msg_struct
-                                                                //     .path_mut::<i64>(
-                                                                //         field_name.as_str(),
-                                                                //     )
-                                                                //     .unwrap() = value[0];
-
-                                                                let json_path = TypeSupport::dot_notation_to_json_path(field_name);
-                                                                *msg_struct_json.pointer_mut(&json_path).expect("Unable to get field from VehicleState struct") = value[0].into();
-                                                            } else {
-                                                                warn!(
-                                                                    "[{}] FMU variable '{}' not found for output topic '{}'.",
-                                                                    fmu_id, fmu_var_name, out_topic
-                                                                );
-                                                            }
-                                                        }
-                                                        _ => {
-                                                            warn!(
-                                                                "[{}] Unsupported FMU variable type for field '{}'.",
-                                                                fmu_id, fmu_var_name
-                                                            );
-                                                        }
-                                                    }
-                                                }
-
-                                                info!(
-                                                    "[{}] Publishing initial sync topic vehicle_state to {}.",
-                                                    fmu_id, out_topic
-                                                );
-
-                                                // let _ = middleware
-                                                //     .publish(
-                                                //         out_topic,
-                                                //         &msg_struct,
-                                                //         Some(initial_timestamp),
-                                                //     )
-                                                //     .await;
-
-                                                let metadata = Metadata::new(
-                                                    out_topic,
-                                                    msg_type,
-                                                    Some(initial_timestamp),
-                                                    None,
-                                                );
-                                                let serialized_msg = serializer.from_json::<VehicleState>(&metadata, msg_struct_json).expect("Unable to serialize VehicleState struct from JSON");
-
-                                                let _ = middleware
-                                                    .publish_raw(
-                                                        msg_type,
-                                                        out_topic,
-                                                        &serialized_msg,
-                                                    )
-                                                    .await;
-                                            }
-                                            _ => {
-                                                warn!(
-                                                    "[{}] Unsupported output topic type: {}",
-                                                    fmu_id, msg_type
-                                                );
-                                                continue;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Pack and publish auxiliary output topics as JsonData
-                                if let Some(aux_out_mapping) =
-                                    fmu_config_json.get("fmu_aux_output_mapping")
-                                {
-                                    for (out_topic, out_var_map) in aux_out_mapping
-                                        .as_object()
-                                        .expect("Unable to get 'fmu_aux_output_mapping' as object")
-                                        .iter()
-                                    {
-                                        let mut data_dict = serde_json::Map::new();
-                                        for (out_topic_var, out_fmu_var) in out_var_map
-                                            .as_object()
-                                            .expect("Unable to get 'out_var_map' as object")
-                                            .iter()
-                                        {
-                                            let out_fmu_var_str = out_fmu_var
-                                                .as_str()
-                                                .expect("FMU variable name should be a string");
-                                            let out_fmu_var_type = fmu_var_types
-                                                .get(out_fmu_var_str)
-                                                .expect("FMU variable type not found.");
-
-                                            match out_fmu_var_type {
-                                                VariableType::FmiFloat64 => {
-                                                    if let Some(out_value) =
-                                                        fmu_data_f64.get(out_fmu_var_str)
-                                                    {
-                                                        if out_value.len() == 1 {
-                                                            // Single value, insert directly
-                                                            data_dict.insert(
-                                                                out_topic_var.to_string(),
-                                                                out_value[0].into(),
-                                                            );
-                                                        } else {
-                                                            // Array, insert as array
-                                                            data_dict.insert(
-                                                                out_topic_var.to_string(),
-                                                                out_value.clone().into(),
-                                                            );
-                                                        }
-                                                    } else {
-                                                        warn!(
-                                                            "[{}] FMU variable '{}' not found for output topic '{}'.",
-                                                            fmu_id, out_fmu_var_str, out_topic
-                                                        );
-                                                    }
-                                                }
-                                                _ => {
-                                                    warn!(
-                                                        "[{}] Unsupported FMU variable type '{}' for output topic '{}'.",
-                                                        fmu_id,
-                                                        fmi3_var_type_to_string(out_fmu_var_type),
-                                                        out_topic
-                                                    );
-                                                }
-                                            };
-                                        }
-
-                                        let data_msg: JsonData = JsonData::new(data_dict.into());
-
-                                        let _ = middleware
-                                            .publish(out_topic, &data_msg, Some(initial_timestamp))
-                                            .await;
-
-                                        // info!(
-                                        //     "[{}] Published auxiliary output topic '{}' with data: {:?}",
-                                        //     fmu_id, out_topic, data_msg
-                                        // );
-                                    }
-                                }
+                                // Test setting some values in fmu_data_f64 manually
+                                fmu_data_f64.insert(
+                                    "vehicle_state.state.pose.position.x".to_string(),
+                                    vec![1.0],
+                                );
+                                fmu_data_f64.insert(
+                                    "vehicle_state.state.pose.position.y".to_string(),
+                                    vec![2.0],
+                                );
+                                fmu_data_f64.insert(
+                                    "vehicle_state.state.pose.position.z".to_string(),
+                                    vec![3.0],
+                                );
                             }
+
+                            publish_component_output_topics_fmu3(
+                                fmu_id,
+                                &fmu_config_json,
+                                &fmu_var_types,
+                                &fmu_data_f64,
+                                &fmu_data_i64,
+                                initial_timestamp,
+                                &middleware,
+                                &serializer,
+                            )
+                            .await;
+
+                            publish_aux_output_topics_fmu3(
+                                fmu_id,
+                                &fmu_config_json,
+                                &fmu_var_types,
+                                &fmu_data_f64,
+                                initial_timestamp,
+                                &middleware,
+                            )
+                            .await;
 
                             // self._is_sim_started = True
                         }
@@ -1221,26 +1008,27 @@ impl FmuDriverRust {
                     // ------------------------------------------------------------------------
                     // Publish output data for the current timestamp
 
-                    {
-                        // self.publish_output_data(timestamp)
+                    publish_component_output_topics_fmu3(
+                        fmu_id,
+                        &fmu_config_json,
+                        &fmu_var_types,
+                        &fmu_data_f64,
+                        &fmu_data_i64,
+                        timestamp_sim,
+                        &middleware,
+                        &serializer,
+                    )
+                    .await;
 
-                        // Publish dummy "aerosim.actor1.vehicle_state" topic
-                        let veh_state = VehicleState::new(
-                            ActorState::default(),
-                            Vector3::default(),
-                            Vector3::default(),
-                            Vector3::default(),
-                            Vector3::default(),
-                        );
-
-                        let _ = middleware
-                            .publish(
-                                "aerosim.actor1.vehicle_state",
-                                &veh_state,
-                                Some(timestamp_sim),
-                            )
-                            .await;
-                    }
+                    publish_aux_output_topics_fmu3(
+                        fmu_id,
+                        &fmu_config_json,
+                        &fmu_var_types,
+                        &fmu_data_f64,
+                        timestamp_sim,
+                        &middleware,
+                    )
+                    .await;
                 }
                 Err(TryRecvError::Disconnected) => {
                     running = false;
