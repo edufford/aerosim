@@ -55,6 +55,7 @@ version = "0.1.0"
 dependencies = [
  "aerosim-macros",
  "async-trait",
+ "bevy_reflect",
  "bincode",
  "cdr",
  "chrono",
@@ -127,6 +128,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_hierarchy",
  "bevy_math",
+ "bevy_reflect",
  "bevy_transform",
  "chrono",
  "fmi",
