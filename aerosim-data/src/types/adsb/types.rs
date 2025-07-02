@@ -1,3 +1,4 @@
+use bevy_reflect::Reflect;
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -23,7 +24,7 @@ use super::{
 };
 
 #[pyclass(get_all)]
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct ADSB {
     pub capability: Capability,
     pub icao: ICAOAddress,
@@ -47,7 +48,7 @@ impl ADSB {
 }
 
 #[pyclass(get_all)]
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub enum ME {
     AircraftIdentification(AircraftIdentification),
     AirbornePosition(AirbornePosition),
@@ -91,7 +92,7 @@ impl ME {
 }
 
 #[pyclass(get_all)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
 pub enum ADSBMessageType {
     ShortAirAirSurveillance(ShortAirAirSurveillance),
     SurveillanceAltitudeReply(SurveillanceAltitudeReply),
@@ -132,7 +133,17 @@ impl ADSBMessageType {
 
 #[pyclass(eq, eq_int)]
 #[derive(
-    Copy, Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq, Eq, JsonSchema,
+    Copy,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize,
+    EnumString,
+    Display,
+    PartialEq,
+    Eq,
+    JsonSchema,
+    Reflect,
 )]
 pub enum EmergencyState {
     None = 0,
@@ -162,7 +173,17 @@ impl From<u8> for EmergencyState {
 
 #[pyclass(eq, eq_int)]
 #[derive(
-    Copy, Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq, Eq, JsonSchema,
+    Copy,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize,
+    EnumString,
+    Display,
+    PartialEq,
+    Eq,
+    JsonSchema,
+    Reflect,
 )]
 pub enum ADSBVersion {
     DOC9871AppendixA,
@@ -182,7 +203,7 @@ impl From<u8> for ADSBVersion {
 }
 
 #[pyclass(get_all)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct CapabilityClassAirborne {
     pub reserved0: u8,
     pub acas: u8,
@@ -212,7 +233,7 @@ impl CapabilityClassAirborne {
 }
 
 #[pyclass(get_all)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct CapabilityClassSurface {
     /// 0, 0 in current version, reserved as id for later versions
     pub reserved0: u8,
@@ -249,7 +270,7 @@ impl CapabilityClassSurface {
 }
 
 #[pyclass(get_all)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct OperationalMode {
     /// (0, 0) in Version 2, reserved for other values
     pub reserved: u8,
@@ -278,7 +299,9 @@ impl OperationalMode {
 }
 
 #[pyclass(eq, eq_int)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq, Eq)]
+#[derive(
+    Copy, Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq, Eq, Reflect,
+)]
 pub enum AirborneVelocitySubType {
     Reserved,
     GroundSpeedDecoding,
@@ -286,7 +309,7 @@ pub enum AirborneVelocitySubType {
 }
 
 #[pyclass]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema, Reflect)]
 pub struct ICAOAddress(pub [u8; 3]);
 
 impl ICAOAddress {
@@ -301,7 +324,7 @@ impl ICAOAddress {
 }
 
 #[pyclass(eq, eq_int)]
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, JsonSchema, Reflect)]
 pub enum FlightStatus {
     NoAlertNoSPIAirborne,
     NoAlertNoSPIOnGround,
@@ -329,7 +352,7 @@ impl From<u8> for FlightStatus {
 }
 
 #[pyclass(eq, eq_int)]
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, JsonSchema, Reflect)]
 pub enum Capability {
     Uncertain = 0,
     Reserved = 1,
@@ -354,7 +377,7 @@ impl From<u8> for Capability {
 }
 
 #[pyclass(eq, eq_int)]
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, JsonSchema, Reflect)]
 #[allow(non_camel_case_types)]
 pub enum ControlFieldType {
     ADSB_ES_NT,
@@ -383,7 +406,9 @@ impl From<u8> for ControlFieldType {
 }
 
 #[pyclass(eq, eq_int)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, EnumString, PartialEq, Eq, JsonSchema)]
+#[derive(
+    Copy, Clone, Debug, Serialize, Deserialize, EnumString, PartialEq, Eq, JsonSchema, Reflect,
+)]
 pub enum SurveillanceStatus {
     NoCondition,
     PermanentAlert,

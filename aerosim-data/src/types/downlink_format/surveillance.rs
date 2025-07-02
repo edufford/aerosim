@@ -1,3 +1,4 @@
+use bevy_reflect::Reflect;
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -5,14 +6,14 @@ use serde::{Deserialize, Serialize};
 use crate::types::adsb::types::{FlightStatus, ICAOAddress};
 
 #[pyclass(get_all)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct ShortAirAirSurveillance {
     pub icao: ICAOAddress,
     pub altitude: u16,
 }
 
 #[pyclass(get_all)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct SurveillanceAltitudeReply {
     pub icao: ICAOAddress,
     pub altitude: u16,
@@ -20,7 +21,7 @@ pub struct SurveillanceAltitudeReply {
 }
 
 #[pyclass(get_all)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct SurveillanceIdentityReply {
     pub icao: ICAOAddress,
     pub identity: u16,

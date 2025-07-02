@@ -1,9 +1,10 @@
+use bevy_reflect::Reflect;
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[pyclass(get_all)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct SurfacePosition {
     /// Aircraft ground speed
     pub mov: u8,

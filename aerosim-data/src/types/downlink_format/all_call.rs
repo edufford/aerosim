@@ -1,10 +1,12 @@
+use bevy_reflect::Reflect;
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::adsb::types::{Capability, ICAOAddress};
+
 #[pyclass(get_all)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct AllCallReply {
     pub icao: ICAOAddress,
     pub capability: Capability,

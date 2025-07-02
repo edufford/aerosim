@@ -1,3 +1,4 @@
+use bevy_reflect::Reflect;
 use pyo3::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,7 @@ pub mod surveillance;
 pub mod tisb;
 
 #[pyclass]
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
 #[serde(untagged)]
 pub enum DownlinkFormat {
     GNSSPositionData(super::adsb::gnss_position_data::GNSSPositionData),

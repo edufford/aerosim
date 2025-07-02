@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use bevy_reflect::Reflect;
 use pyo3::{
     exceptions::PyRuntimeError,
     prelude::*,
@@ -17,7 +18,9 @@ use crate::{
 
 use super::Vector3;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, EnumString, Display)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, EnumString, Display, Reflect,
+)]
 #[pyclass(eq, eq_int)]
 pub enum SensorType {
     Camera,
@@ -63,7 +66,7 @@ impl SensorType {
 
 // Image types
 
-#[derive(Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq, Reflect)]
 #[pyclass(eq, eq_int)]
 pub enum ImageEncoding {
     RGB8,
@@ -76,7 +79,7 @@ pub enum ImageEncoding {
     // Custom(String),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq, Reflect)]
 #[pyclass(eq, eq_int)]
 pub enum ImageFormat {
     JPEG,
@@ -118,7 +121,7 @@ impl ImageEncoding {
 }
 
 #[pyclass]
-#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage)]
+#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, Reflect)]
 pub struct Image {
     #[pyo3(get, set)]
     pub camera_info: CameraInfo,
@@ -229,7 +232,7 @@ impl Image {
 }
 
 #[pyclass]
-#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage)]
+#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, Reflect)]
 pub struct CompressedImage {
     #[pyo3(get, set)]
     pub format: ImageFormat,
@@ -341,7 +344,7 @@ where
 }
 
 #[pyclass(get_all, set_all)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
 pub struct CameraInfo {
     pub width: u32,
     pub height: u32,
@@ -389,7 +392,7 @@ impl CameraInfo {
 }
 
 #[pyclass(get_all, set_all)]
-#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 pub struct ADSB {
     pub message: DownlinkFormat,
 }
@@ -410,7 +413,7 @@ impl ADSB {
 }
 
 #[pyclass(get_all, set_all)]
-#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 pub struct GNSS {
     pub latitude: f64,
     pub longitude: f64,
@@ -451,7 +454,7 @@ impl GNSS {
 }
 
 #[pyclass(get_all, set_all)]
-#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 pub struct IMU {
     acceleration: Vector3,
     gyroscope: Vector3,

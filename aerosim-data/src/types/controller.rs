@@ -1,3 +1,4 @@
+use bevy_reflect::Reflect;
 use pyo3::{
     prelude::*,
     types::{PyCapsule, PyDict, PyList},
@@ -24,6 +25,7 @@ use crate::{types::PyTypeSupport, AerosimMessage};
     PartialEq,
     AerosimMessage,
     JsonSchema,
+    Reflect,
 )]
 #[repr(u8)]
 #[pyclass(eq, eq_int, get_all, set_all)]
@@ -73,7 +75,7 @@ impl AutopilotFlightPlanCommand {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 #[pyclass(get_all, set_all)]
 pub struct AutopilotCommand {
     pub flight_plan: String, // some kind of flight plan, e.g. waypoints, mission, etc. (JSON?)
@@ -193,7 +195,7 @@ impl AutopilotCommand {
 // Flight Control Command
 // Output from (auto)pilot, input to flight controller
 
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 #[pyclass(get_all, set_all)]
 pub struct FlightControlCommand {
     power_cmd: Vec<f64>, // power, 0.0~1.0, array to be able to split vertical lift and horizontal cruise
@@ -290,7 +292,7 @@ impl FlightControlCommand {
 // Aircraft Effector Command
 // Output from flight controller, input to flight dynamics model
 
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 #[pyclass(get_all, set_all)]
 pub struct AircraftEffectorCommand {
     throttle_cmd: Vec<f64>,

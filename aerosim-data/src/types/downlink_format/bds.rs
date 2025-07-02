@@ -1,9 +1,10 @@
+use bevy_reflect::Reflect;
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[pyclass(eq)]
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Reflect)]
 pub enum BDS {
     Empty(),
     DataLinkCapability(DataLinkCapability),
@@ -12,7 +13,7 @@ pub enum BDS {
 }
 
 #[pyclass(get_all)]
-#[derive(Copy, Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Copy, Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Reflect)]
 pub struct DataLinkCapability {
     pub continuation_flag: bool,
     pub overlay_command_capability: bool,

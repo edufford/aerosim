@@ -1,12 +1,13 @@
+use crate::types::geometry::Pose;
 use crate::{types::PyTypeSupport, AerosimMessage};
 
-use super::geometry::Pose;
+use bevy_reflect::Reflect;
 use pyo3::prelude::*;
 use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 #[pyclass(get_all)]
 pub struct EffectorState {
     pub pose: Pose,
