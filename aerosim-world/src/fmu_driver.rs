@@ -26,9 +26,8 @@ use aerosim_data::{
     middleware::{
         Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry, Serializer,
     },
-    types::{AerosimMessageEnum, JsonData, TimeStamp, TypeSupport},
+    types::{JsonData, TimeStamp, TypeSupport, VehicleState, PrimaryFlightDisplayData},
 };
-
 use crate::fmu_utils::{
     fmi3_var_type_to_string, publish_aux_output_topics_fmu3, publish_component_output_topics_fmu3,
 };
@@ -279,7 +278,7 @@ impl FmuDriverRust {
         let mut fmu_model: Option<FmiModel> = None;
         let mut fmu_time: f64 = 0.0;
 
-        let input_data_map: Arc<Mutex<HashMap<String, (TimeStamp, AerosimMessageEnum)>>> =
+        let input_data_map: Arc<Mutex<HashMap<String, (TimeStamp, Value)>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
         let mut fmu_data_f64: HashMap<String, Vec<f64>> = HashMap::new();
@@ -428,11 +427,19 @@ impl FmuDriverRust {
                                                 "Could not deserialize metadata from payload"
                                             ))?;
 
-                                        let mut input_data_map_lock = input_data_map.lock().unwrap();
+                                        let mut input_data_map_lock =
+                                            input_data_map.lock().unwrap();
 
                                         // Check if the topic already has data and if the received data is
                                         // older than the existing data
-                                        if input_data_map_lock.contains_key(&metadata.topic) && metadata.is_sim_time_valid() && metadata.timestamp_sim < input_data_map_lock.get(&metadata.topic).unwrap().0 {
+                                        if input_data_map_lock.contains_key(&metadata.topic)
+                                            && metadata.is_sim_time_valid()
+                                            && metadata.timestamp_sim
+                                                < input_data_map_lock
+                                                    .get(&metadata.topic)
+                                                    .unwrap()
+                                                    .0
+                                        {
                                             info!(
                                                 "[{}] Ignoring older data for topic: {}",
                                                 fmu_id_str, metadata.topic
@@ -440,18 +447,36 @@ impl FmuDriverRust {
                                             return Ok(());
                                         }
 
-                                        let aerosim_msg = AerosimMessageEnum::deserialize(
-                                            &serializer,
-                                            &metadata.type_name,
-                                            payload,
-                                        )
-                                        .expect("Error deserializing FMU input message to AerosimMessageEnum.");
+                                        // Deserialize the payload into a JSON Value
+                                        let msg_json = match metadata.type_name.as_str() {
+                                            "aerosim::types::VehicleState" => serializer.to_json::<VehicleState>(payload),
+                                            "aerosim::types::PrimaryFlightDisplayData" => serializer.to_json::<PrimaryFlightDisplayData>(payload),
+                                            "aerosim::types::JsonData" => {
+                                                let (_metadata, json_data) = serializer.deserialize_message::<JsonData>(payload).expect("Failed to deserialize JsonData payload");
+                                                json_data.get_data()
+                                            }
+                                            _ => {
+                                                warn!(
+                                                    "[{}] Unsupported input topic type: {}",
+                                                    fmu_id_str, metadata.type_name
+                                                );
+                                                None
+                                            }
+                                        };
 
-                                        // Insert the new data into the input data map
-                                        input_data_map_lock.insert(
-                                            metadata.topic.clone(),
-                                            (metadata.timestamp_sim, aerosim_msg),
-                                        );
+                                        // Store the received data in the input data map
+                                        if let Some(msg_json) = msg_json {
+                                            input_data_map_lock.insert(
+                                                metadata.topic.clone(),
+                                                (metadata.timestamp_sim, msg_json),
+                                            );
+                                        } else {
+                                            warn!(
+                                                "[{}] Failed to deserialize payload for topic: {}",
+                                                fmu_id_str, metadata.topic
+                                            );
+                                        }
+
 
                                         Ok(())
                                     })
@@ -922,44 +947,55 @@ impl FmuDriverRust {
                                             input_data_map.lock().unwrap();
                                         let cur_input_data = input_data_map_lock.drain();
 
-                                        for (input_topic, (timestamp, aerosim_msg)) in
-                                            cur_input_data
-                                        {
+                                        for (input_topic, (timestamp, msg_json)) in cur_input_data {
                                             info!(
                                                 "[{}] Writing input topic '{}' at timestamp: {:?}",
                                                 fmu_id, input_topic, timestamp
                                             );
 
-                                            match aerosim_msg {
-                                                AerosimMessageEnum::VehicleState(vehicle_state) => {
-                                                    let flat_fields =
-                                                        TypeSupport::get_flat_field_names(
-                                                            &vehicle_state,
-                                                            "",
-                                                        );
+                                            let flat_fields =
+                                                TypeSupport::get_flat_fields_from_json_object(
+                                                    &msg_json, "",
+                                                );
+                                                
 
-                                                    for field in flat_fields {
-                                                        info!(
-                                                            "[{}] VehicleState field: {}",
-                                                            fmu_id, field
-                                                        );
-
+                                            // Iterate through the flat fields and set the FMU variables
+                                                 for field in flat_fields {
+                                                        let json_path = TypeSupport::dot_notation_to_json_path(&field);
                                                         let var_ref = fmu_var_refs
                                                             .get(&field)
                                                             .expect("FMU variable reference not found.");
-
                                                         let var_type = fmu_var_types
                                                             .get(&field)
                                                             .expect("FMU variable type not found.");
 
                                                         match var_type {
                                                             VariableType::FmiFloat64 => {
-                                                                let new_val_f64 = *vehicle_state.path::<f64>(field.as_str())
-                                                                    .expect("Unable to get field value from VehicleState.");
+                                                                
+                                                                let new_val_f64 = msg_json.pointer(&json_path).expect("Unable to get field value from input message.")
+                                                                    .as_f64()
+                                                                    .expect("Field value is not a valid float64.");
 
                                                                 let values = vec![new_val_f64];
 
                                                                 let _ = fmu_instance.set_float64(&[*var_ref], &values);
+                                                                info!(
+                                                                    "[{}] Set FMU variable '{}' to value: {:?}",
+                                                                    fmu_id, field, values
+                                                                );
+                                                            }
+                                                            VariableType::FmiInt64 => {
+                                                                let new_val_i64 = msg_json.pointer(&json_path).expect("Unable to get field value from input message.")
+                                                                    .as_i64()
+                                                                    .expect("Field value is not a valid int64.");
+
+                                                                let values = vec![new_val_i64];
+
+                                                                let _ = fmu_instance.set_int64(&[*var_ref], &values);
+                                                                info!(
+                                                                    "[{}] Set FMU variable '{}' to value: {:?}",
+                                                                    fmu_id, field, values
+                                                                );
                                                             }
                                                             _ => {
                                                                 warn!(
@@ -972,72 +1008,6 @@ impl FmuDriverRust {
                                                             }
                                                         }
                                                     }
-                                                }
-                                                AerosimMessageEnum::JsonData(json_data) => {
-                                                    let json_value = json_data
-                                                        .get_data()
-                                                        .expect("Unable to get JsonData payload.");
-                                                    let flat_fields =
-                                                        TypeSupport::get_flat_fields_from_json_object(
-                                                            &json_value,
-                                                            "",
-                                                        );
-
-                                                    for field in flat_fields {
-                                                        let var_ref = fmu_var_refs
-                                                            .get(&field)
-                                                            .expect("FMU variable reference not found.");
-
-                                                        let var_type = fmu_var_types
-                                                            .get(&field)
-                                                            .expect("FMU variable type not found.");
-
-                                                            let json_path = TypeSupport::dot_notation_to_json_path(&field);
-                                                        let new_val = json_value.pointer(&json_path).unwrap();
-
-                                                        match var_type {
-                                                            VariableType::FmiFloat64 => {
-                                                                let values: Vec<f64>;
-                                                                if let Some(new_val_array) = new_val.as_array() {
-                                                                    values = new_val_array
-                                                                        .iter()
-                                                                        .filter_map(|v| v.as_f64())
-                                                                        .collect();
-
-                                                                } else if let Some(new_val_f64) = new_val.as_f64() {
-                                                                    values = vec![new_val_f64];
-                                                                } else {
-                                                                    warn!(
-                                                                        "[{}] Unsupported value type for FMU variable '{}': {:?}",
-                                                                        fmu_id, field, new_val
-                                                                    );
-                                                                    continue;
-                                                                }
-
-                                                                info!("[{}] Setting FMU variable '{}' to values: {:?}", fmu_id, field, values);
-                                                                let _ = fmu_instance.set_float64(&[*var_ref], &values);
-                                                            }
-                                                            _ => {
-                                                                warn!(
-                                                                    "[{}] Unsupported FMU variable type for '{}': {}",
-                                                                    fmu_id,
-                                                                    field,
-                                                                    fmi3_var_type_to_string(var_type)
-                                                                );
-                                                                continue;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                _ => {
-                                                    warn!(
-                                                        "[{}] Unsupported input message type: {:?}",
-                                                        fmu_id, aerosim_msg
-                                                    );
-                                                }
-                                            }
-
-                                            // Write the input data to the FMU instance
                                         }
                                     }
 
