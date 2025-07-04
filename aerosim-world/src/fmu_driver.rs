@@ -1,14 +1,12 @@
 use ::log::{info, warn};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
-use std::rc::Rc;
+use std::path::{Path, PathBuf};
 use std::sync::{
     mpsc::{self, Receiver, Sender, TryRecvError},
     Arc, Mutex,
 };
 use std::thread::JoinHandle;
 
-use ouroboros::self_referencing;
 use pyo3::prelude::*;
 use serde_json::Value;
 
@@ -31,6 +29,7 @@ use aerosim_data::{
 
 use crate::fmu_utils::{
     fmi3_var_type_to_string, publish_aux_output_topics_fmu3, publish_component_output_topics_fmu3,
+    set_init_value_fmu3,
 };
 
 #[pyclass]
@@ -169,32 +168,36 @@ impl FmuDriverRust {
     }
 }
 
-// pub struct FmiModel {
-//     fmu_import: Box<Fmi3Import>,
-//     fmu_instance: fmi::fmi3::instance::InstanceCS<'static>,
-// }
+pub struct Fmi3Model {
+    fmu_import: Box<Fmi3Import>,
+    fmu_instance: fmi::fmi3::instance::InstanceCS<'static>,
+}
 
-// impl FmiModel {
-//     pub fn new(fmu_filename: PathBuf) -> Self {
-//         // Allocate the import on the heap and leak it to get a 'static reference.
-//         let fmu_import_box: Box<Fmi3Import> =
-//             Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
-//         let fmu_import_static: &'static Fmi3Import = Box::leak(fmu_import_box);
+impl Fmi3Model {
+    pub fn new(fmu_filename: PathBuf) -> Self {
+        // Allocate the import on the heap and leak it to get a 'static reference.
+        let fmu_import_box: Box<Fmi3Import> =
+            Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
+        let fmu_import_static: &'static Fmi3Import = Box::leak(fmu_import_box);
 
-//         let fmu_instance = fmu_import_static
-//             .instantiate_cs("instance1", false, true, false, false, &[])
-//             .expect("Unable to instantiate FMU instance.");
+        let fmu_instance = fmu_import_static
+            .instantiate_cs("instance1", false, true, false, false, &[])
+            .expect("Unable to instantiate FMU instance.");
 
-//         // Rebuild the Box to deallocate it later.
-//         let fmu_import =
-//             unsafe { Box::from_raw(fmu_import_static as *const Fmi3Import as *mut Fmi3Import) };
+        // Rebuild the Box to deallocate it later.
+        let fmu_import =
+            unsafe { Box::from_raw(fmu_import_static as *const Fmi3Import as *mut Fmi3Import) };
 
-//         Self {
-//             fmu_import,
-//             fmu_instance,
-//         }
-//     }
-// }
+        Self {
+            fmu_import,
+            fmu_instance,
+        }
+    }
+
+    pub fn get_fmu_instance(&mut self) -> &mut fmi::fmi3::instance::InstanceCS<'static> {
+        &mut self.fmu_instance
+    }
+}
 
 // pub struct FmiModel<'a> {
 //     fmu_import: Box<Fmi3Import>,
@@ -222,13 +225,13 @@ impl FmuDriverRust {
 //     }
 // }
 
-#[self_referencing]
-pub struct FmiModel {
-    fmu_import: Rc<Fmi3Import>,
-    #[covariant]
-    #[borrows(fmu_import)]
-    fmu_instance: fmi::fmi3::instance::InstanceCS<'this>,
-}
+// #[self_referencing]
+// pub struct FmiModel {
+//     fmu_import: Rc<Fmi3Import>,
+//     #[covariant]
+//     #[borrows(fmu_import)]
+//     fmu_instance: fmi::fmi3::instance::InstanceCS<'this>,
+// }
 
 // pub enum FmiImportEnum {
 //     Fmi2Import(Fmi2Import),
@@ -276,11 +279,8 @@ fn input_data_callback(
             return Ok(());
         }
 
-        // Deserialize the payload into a JSON Value
-        let msg_json = deserialize_to_json(&metadata.type_name, &serializer, payload);
-
-        // Store the received data in the input data map
-        if let Some(msg_json) = msg_json {
+        // Deserialize the payload into a JSON value and store it in the input data map
+        if let Some(msg_json) = deserialize_to_json(&metadata.type_name, &serializer, payload) {
             input_data_map_lock.insert(metadata.topic.clone(), (metadata.timestamp_sim, msg_json));
         } else {
             warn!(
@@ -320,7 +320,7 @@ impl FmuDriverRust {
         let mut aux_topics_to_subscribe: HashSet<String> = HashSet::new();
         let mut aux_topics_to_publish: HashSet<String> = HashSet::new();
 
-        let mut fmu_model: Option<FmiModel> = None;
+        let mut fmu_model: Option<Fmi3Model> = None;
         let mut fmu_time: f64 = 0.0;
 
         let input_data_map: Arc<Mutex<HashMap<String, (TimeStamp, Value)>>> =
@@ -525,12 +525,17 @@ impl FmuDriverRust {
                                     // ------------------------------------------------------------
                                     // FMI 3.0 model processing
 
-                                    let fmu_import: Rc<Fmi3Import> = Rc::new(
-                                        fmi::import::from_path(&fmu_filename)
-                                            .expect("Unable to import FMU file."),
-                                    );
+                                    // Load the FMU instance
+                                    fmu_model = Some(Fmi3Model::new(fmu_filename));
 
-                                    let fmu_model_desc = fmu_import.model_description();
+                                    // let fmu_import: Rc<Fmi3Import> = Rc::new(
+                                    //     fmi::import::from_path(&fmu_filename)
+                                    //         .expect("Unable to import FMU file."),
+                                    // );
+
+                                    // TODO load this info inside FmiModel
+                                    let fmu_model_desc =
+                                        fmu_model.as_ref().unwrap().fmu_import.model_description();
 
                                     info!(
                                         "[{}] FMU model name: {}, FMI ver: {}",
@@ -633,26 +638,6 @@ impl FmuDriverRust {
                                             .insert(fmu_var_name.to_string(), fmu_var_caus);
                                         fmu_var_dims.insert(fmu_var_name.to_string(), fmu_var_dim);
                                     }
-
-                                    // Load the FMU instance
-                                    fmu_model = Some(
-                                        FmiModelBuilder {
-                                            fmu_import,
-                                            fmu_instance_builder: |fmu_import_ref| {
-                                                fmu_import_ref
-                                                    .instantiate_cs(
-                                                        "instance1",
-                                                        false,
-                                                        true,
-                                                        false,
-                                                        false,
-                                                        &[],
-                                                    )
-                                                    .expect("Unable to instantiate FMU instance.")
-                                            },
-                                        }
-                                        .build(),
-                                    );
                                 }
                             }
 
@@ -702,179 +687,69 @@ impl FmuDriverRust {
                             // Initialize the FMU model instance to be ready to start stepping
                             {
                                 // self.init_fmu()
-                                fmu_model
-                                    .as_mut()
-                                    .expect("FMU model should be loaded")
-                                    .with_fmu_instance_mut(|fmu_instance| {
-                                        // Read base default values for all FMU input/output variables (these are
-                                        // used in initial published output at t=0, but are overwritten when
-                                        // setting the initial values from the "fmu_initial_vals" config).
-                                        for (fmu_var, fmu_var_type) in fmu_var_types.iter() {
-                                            // Read the FMU variable value based on its type
-                                            match fmu_var_type {
-                                                VariableType::FmiFloat64 => {
-                                                    let var_ref = fmu_var_refs
-                                                        .get(fmu_var)
-                                                        .expect("FMU variable reference not found.");
-                                                    let var_dim = fmu_var_dims
-                                                        .get(fmu_var)
-                                                        .expect("FMU variable dimensions not found.");
-                                                    let var_dim_tot =
-                                                        var_dim.iter().product::<u64>() as usize;
-                                                    let mut values: Vec<f64> =
-                                                        vec![0.0; var_dim_tot];
+                                let fmu_instance = fmu_model.as_mut().unwrap().get_fmu_instance();
 
-                                                    let _ = fmu_instance
-                                                        .get_float64(&[*var_ref], &mut values);
-
-                                                    fmu_data_f64.insert(fmu_var.clone(), values);
-                                                }
-                                                VariableType::FmiInt64 => {
-                                                    let var_ref = fmu_var_refs
-                                                        .get(fmu_var)
-                                                        .expect("FMU variable reference not found.");
-                                                    let var_dim = fmu_var_dims
-                                                        .get(fmu_var)
-                                                        .expect("FMU variable dimensions not found.");
-                                                    let var_dim_tot =
-                                                        var_dim.iter().product::<u64>() as usize;
-                                                    let mut values: Vec<i64> =
-                                                        vec![0; var_dim_tot];
-
-                                                    let _ = fmu_instance
-                                                        .get_int64(&[*var_ref], &mut values);
-
-                                                    fmu_data_i64.insert(fmu_var.clone(), values);
-                                                }
-                                                // TODO Refactor into a helper function and handle other variable types
-                                                _ => {
-                                                    warn!(
-                                                        "[{}] Unsupported FMU variable type: {}",
-                                                        fmu_id,
-                                                        fmi3_var_type_to_string(fmu_var_type)
-                                                    );
-                                                }
-                                            }
-                                        }
-
-                                        // Set initial values for FMU variables set in the "fmu_initial_vals" config
-                                        for (init_var, init_value) in fmu_config_json.get("fmu_initial_vals").expect("Unable to get 'fmu_initial_vals' field from JSON").as_object().expect("Unable to get 'fmu_initial_vals' as object").iter() {
-                                            info!(
-                                                "[{}] Setting initial value '{}' = {:?}",
-                                                fmu_id, init_var, init_value
-                                            );
-                                            if let Some(fmu_var_ref) = fmu_var_refs.get(init_var) {
-                                                match fmu_var_types.get(init_var) {
-                                                    Some(VariableType::FmiFloat64) => {
-                                                        let value: Vec<f64>;
-                                                        if let Some(value_array) = init_value.as_array() {
-                                                            // Convert JSON array to Vec<f64>
-                                                            value = value_array
-                                                                .iter()
-                                                                .filter_map(|v| v.as_f64())
-                                                                .collect();
-                                                        } else if let Some(value_f64) = init_value.as_f64() {
-                                                            value = vec![value_f64];
-                                                        } else {
-                                                            warn!(
-                                                                "[{}] Initial value for '{}' is not a valid float64 array or value.",
-                                                                fmu_id, init_var
-                                                            );
-                                                            continue;
-                                                        }
-
-                                                        let _ = fmu_instance.set_float64(&[*fmu_var_ref], &value);
-                                                        fmu_data_f64.insert(init_var.clone(), value);
-                                                    }
-                                                    Some(VariableType::FmiInt64) => {
-                                                        let value: Vec<i64>;
-                                                        if let Some(value_array) = init_value.as_array() {
-                                                            // Convert JSON array to Vec<i64>
-                                                            value = value_array
-                                                                .iter()
-                                                                .filter_map(|v| v.as_i64())
-                                                                .collect();
-                                                        } else if let Some(value_i64) = init_value.as_i64() {
-                                                            value = vec![value_i64];
-                                                        } else {
-                                                            warn!(
-                                                                "[{}] Initial value for '{}' is not a valid int64 array or value.",
-                                                                fmu_id, init_var
-                                                            );
-                                                            continue;
-                                                        }
-
-                                                        let _ = fmu_instance.set_int64(&[*fmu_var_ref], &value);
-                                                        fmu_data_i64.insert(init_var.clone(), value);
-                                                    }
-                                                    _ => {
-                                                        warn!(
-                                                            "[{}] Unsupported FMU variable type for initial value: {}",
-                                                            fmu_id,
-                                                            fmi3_var_type_to_string(fmu_var_types.get(init_var).unwrap())
-                                                        );
-                                                    }
-                                                }
-                                            } else {
-                                                warn!(
-                                                    "[{}] FMU variable '{}' not found for initial value setting.",
-                                                    fmu_id, init_var
-                                                );
-                                            }
-                                        }
-
-                                        // Initialize the FMU states
-                                        FmiInstance::enter_initialization_mode(
+                                // Set initial values for FMU variables set in the "fmu_initial_vals" config
+                                if let Some(fmu_init_vals_json) =
+                                    fmu_config_json.get("fmu_initial_vals")
+                                {
+                                    let fmu_init_vals_obj = fmu_init_vals_json.as_object().expect(
+                                        "Unable to get 'fmu_initial_vals' as a JSON object",
+                                    );
+                                    for (init_var, init_value) in fmu_init_vals_obj {
+                                        set_init_value_fmu3(
+                                            fmu_id,
+                                            init_var,
+                                            init_value,
+                                            &fmu_var_refs,
+                                            &fmu_var_types,
                                             fmu_instance,
-                                            None,
-                                            fmu_time,
-                                            None,
                                         );
+                                    }
+                                }
 
-                                        // Exit initialization mode to be ready to start stepping
-                                        FmiInstance::exit_initialization_mode(fmu_instance);
-                                    });
+                                // Initialize the FMU states
+                                FmiInstance::enter_initialization_mode(
+                                    fmu_instance,
+                                    None,
+                                    fmu_time,
+                                    None,
+                                );
+
+                                // Exit initialization mode to be ready to start stepping
+                                FmiInstance::exit_initialization_mode(fmu_instance);
                             }
-
-                            // Publish initial value output topics for initial timestamp
 
                             {
-                                // Test setting some values in fmu_data_f64 manually
-                                fmu_data_f64.insert(
-                                    "vehicle_state.state.pose.position.x".to_string(),
-                                    vec![1.0],
-                                );
-                                fmu_data_f64.insert(
-                                    "vehicle_state.state.pose.position.y".to_string(),
-                                    vec![2.0],
-                                );
-                                fmu_data_f64.insert(
-                                    "vehicle_state.state.pose.position.z".to_string(),
-                                    vec![3.0],
-                                );
+                                // self.init_fmu()
+                                let fmu_instance = fmu_model.as_mut().unwrap().get_fmu_instance();
+
+                                // Publish initial value output topics for initial timestamp
+                                publish_component_output_topics_fmu3(
+                                    fmu_id,
+                                    &fmu_config_json,
+                                    &fmu_var_types,
+                                    &fmu_var_refs,
+                                    &fmu_var_dims,
+                                    fmu_instance,
+                                    initial_timestamp,
+                                    &middleware,
+                                    &serializer,
+                                )
+                                .await;
+
+                                publish_aux_output_topics_fmu3(
+                                    fmu_id,
+                                    &fmu_config_json,
+                                    &fmu_var_types,
+                                    &fmu_var_refs,
+                                    &fmu_var_dims,
+                                    fmu_instance,
+                                    initial_timestamp,
+                                    &middleware,
+                                )
+                                .await;
                             }
-
-                            publish_component_output_topics_fmu3(
-                                fmu_id,
-                                &fmu_config_json,
-                                &fmu_var_types,
-                                &fmu_data_f64,
-                                &fmu_data_i64,
-                                initial_timestamp,
-                                &middleware,
-                                &serializer,
-                            )
-                            .await;
-
-                            publish_aux_output_topics_fmu3(
-                                fmu_id,
-                                &fmu_config_json,
-                                &fmu_var_types,
-                                &fmu_data_f64,
-                                initial_timestamp,
-                                &middleware,
-                            )
-                            .await;
 
                             // self._is_sim_started = True
                         }
@@ -920,166 +795,168 @@ impl FmuDriverRust {
                                     fmu_id, simtime_sec, fmu_time
                                 );
                             } else {
-                                fmu_model_ref.with_fmu_instance_mut(|fmu_instance| {
-                                    // ------------------------------------------------------------
-                                    // Write inputs to the FMU
+                                let fmu_instance = fmu_model_ref.get_fmu_instance();
 
-                                    // TODO Process every input topic that has been received and stored in input_data_map
-                                    {
-                                        let mut input_data_map_lock =
-                                            input_data_map.lock().unwrap();
-                                        let cur_input_data = input_data_map_lock.drain();
+                                // ------------------------------------------------------------
+                                // Write inputs to the FMU
 
-                                        for (input_topic, (timestamp, msg_json)) in cur_input_data {
-                                            info!(
-                                                "[{}] Writing input topic '{}' at timestamp: {:?}",
-                                                fmu_id, input_topic, timestamp
+                                // TODO Process every input topic that has been received and stored in input_data_map
+                                {
+                                    let mut input_data_map_lock = input_data_map.lock().unwrap();
+                                    let cur_input_data = input_data_map_lock.drain();
+
+                                    for (input_topic, (timestamp, msg_json)) in cur_input_data {
+                                        info!(
+                                            "[{}] Writing input topic '{}' at timestamp: {:?}",
+                                            fmu_id, input_topic, timestamp
+                                        );
+
+                                        let flat_fields =
+                                            TypeSupport::get_flat_fields_from_json_object(
+                                                &msg_json, "",
                                             );
 
-                                            let flat_fields =
-                                                TypeSupport::get_flat_fields_from_json_object(
-                                                    &msg_json, "",
-                                                );
+                                        // Iterate through the flat fields and set the FMU variables
+                                        for field in flat_fields {
+                                            let json_path =
+                                                TypeSupport::dot_notation_to_json_path(&field);
+                                            let var_ref = fmu_var_refs
+                                                .get(&field)
+                                                .expect("FMU variable reference not found.");
+                                            let var_type = fmu_var_types
+                                                .get(&field)
+                                                .expect("FMU variable type not found.");
 
-                                            // Iterate through the flat fields and set the FMU variables
-                                                 for field in flat_fields {
-                                                        let json_path = TypeSupport::dot_notation_to_json_path(&field);
-                                                        let var_ref = fmu_var_refs
-                                                            .get(&field)
-                                                            .expect("FMU variable reference not found.");
-                                                        let var_type = fmu_var_types
-                                                            .get(&field)
-                                                            .expect("FMU variable type not found.");
-
-                                                        match var_type {
-                                                            VariableType::FmiFloat64 => {
-                                                                let new_val_f64 = msg_json.pointer(&json_path).expect("Unable to get field value from input message.")
+                                            match var_type {
+                                                VariableType::FmiFloat64 => {
+                                                    let new_val_f64 = msg_json.pointer(&json_path).expect("Unable to get field value from input message.")
                                                                     .as_f64()
                                                                     .expect("Field value is not a valid float64.");
 
-                                                                let values = vec![new_val_f64];
+                                                    let values = vec![new_val_f64];
 
-                                                                let _ = fmu_instance.set_float64(&[*var_ref], &values);
-                                                                info!(
-                                                                    "[{}] Set FMU variable '{}' to value: {:?}",
-                                                                    fmu_id, field, values
-                                                                );
-                                                            }
-                                                            VariableType::FmiInt64 => {
-                                                                let new_val_i64 = msg_json.pointer(&json_path).expect("Unable to get field value from input message.")
+                                                    let _ = fmu_instance
+                                                        .set_float64(&[*var_ref], &values);
+                                                    info!(
+                                                        "[{}] Set FMU variable '{}' to value: {:?}",
+                                                        fmu_id, field, values
+                                                    );
+                                                }
+                                                VariableType::FmiInt64 => {
+                                                    let new_val_i64 = msg_json.pointer(&json_path).expect("Unable to get field value from input message.")
                                                                     .as_i64()
                                                                     .expect("Field value is not a valid int64.");
 
-                                                                let values = vec![new_val_i64];
+                                                    let values = vec![new_val_i64];
 
-                                                                let _ = fmu_instance.set_int64(&[*var_ref], &values);
-                                                                info!(
-                                                                    "[{}] Set FMU variable '{}' to value: {:?}",
-                                                                    fmu_id, field, values
-                                                                );
-                                                            }
-                                                            _ => {
-                                                                warn!(
+                                                    let _ = fmu_instance
+                                                        .set_int64(&[*var_ref], &values);
+                                                    info!(
+                                                        "[{}] Set FMU variable '{}' to value: {:?}",
+                                                        fmu_id, field, values
+                                                    );
+                                                }
+                                                _ => {
+                                                    warn!(
                                                                     "[{}] Unsupported FMU variable type for '{}': {}",
                                                                     fmu_id,
                                                                     field,
                                                                     fmi3_var_type_to_string(var_type)
                                                                 );
-                                                                continue;
-                                                            }
-                                                        }
-                                                    }
+                                                    continue;
+                                                }
+                                            }
                                         }
                                     }
+                                }
 
-                                    // ------------------------------------------------------------
-                                    // Do one step of the FMU
-                                    let no_set_fmu_state_prior_to_current_point = false;
+                                // ------------------------------------------------------------
+                                // Do one step of the FMU
+                                let no_set_fmu_state_prior_to_current_point = false;
 
-                                    let mut event_handling_needed = false;
-                                    let mut terminate_simulation = false;
-                                    let mut early_return = false;
-                                    let mut last_successful_time: f64 = 0.0;
+                                let mut event_handling_needed = false;
+                                let mut terminate_simulation = false;
+                                let mut early_return = false;
+                                let mut last_successful_time: f64 = 0.0;
 
-                                    fmu_instance.do_step(
-                                        fmu_time,
-                                        cur_step_sec,
-                                        no_set_fmu_state_prior_to_current_point,
-                                        &mut event_handling_needed,
-                                        &mut terminate_simulation,
-                                        &mut early_return,
-                                        &mut last_successful_time,
+                                fmu_instance.do_step(
+                                    fmu_time,
+                                    cur_step_sec,
+                                    no_set_fmu_state_prior_to_current_point,
+                                    &mut event_handling_needed,
+                                    &mut terminate_simulation,
+                                    &mut early_return,
+                                    &mut last_successful_time,
+                                );
+
+                                // Advance the time
+                                fmu_time = round_microsec(last_successful_time);
+
+                                info!("[{}] FMU step done, fmu_time: {}", fmu_id, fmu_time);
+
+                                // ------------------------------------------------------------
+                                // Read outputs from the FMU
+
+                                // Store latest values for all FMU in/output variables in fmu_data_* maps
+                                for (fmu_var, fmu_var_type) in fmu_var_types.iter() {
+                                    // Read the FMU variable value based on its type
+                                    match fmu_var_type {
+                                        VariableType::FmiFloat64 => {
+                                            let var_ref = fmu_var_refs
+                                                .get(fmu_var)
+                                                .expect("FMU variable reference not found.");
+                                            let var_dim = fmu_var_dims
+                                                .get(fmu_var)
+                                                .expect("FMU variable dimensions not found.");
+                                            let var_dim_tot =
+                                                var_dim.iter().product::<u64>() as usize;
+                                            let mut values: Vec<f64> = vec![0.0; var_dim_tot];
+
+                                            let _ =
+                                                fmu_instance.get_float64(&[*var_ref], &mut values);
+
+                                            fmu_data_f64.insert(fmu_var.clone(), values);
+                                        }
+                                        VariableType::FmiInt64 => {
+                                            let var_ref = fmu_var_refs
+                                                .get(fmu_var)
+                                                .expect("FMU variable reference not found.");
+                                            let var_dim = fmu_var_dims
+                                                .get(fmu_var)
+                                                .expect("FMU variable dimensions not found.");
+                                            let var_dim_tot =
+                                                var_dim.iter().product::<u64>() as usize;
+                                            let mut values: Vec<i64> = vec![0; var_dim_tot];
+
+                                            let _ =
+                                                fmu_instance.get_int64(&[*var_ref], &mut values);
+
+                                            fmu_data_i64.insert(fmu_var.clone(), values);
+                                        }
+                                        // TODO Refactor into a helper function and handle other variable types
+                                        _ => {
+                                            warn!(
+                                                "[{}] Unsupported FMU variable type: {}",
+                                                fmu_id,
+                                                fmi3_var_type_to_string(fmu_var_type)
+                                            );
+                                        }
+                                    }
+                                }
+
+                                // Debug test read variables
+                                for (fmu_var, fmu_value) in fmu_data_f64.iter() {
+                                    info!(
+                                        "[{}] FMU variable '{}' = {:?}",
+                                        fmu_id, fmu_var, fmu_value
                                     );
-
-                                    // Advance the time
-                                    fmu_time = round_microsec(last_successful_time);
-
-                                    info!("[{}] FMU step done, fmu_time: {}", fmu_id, fmu_time);
-
-                                    // ------------------------------------------------------------
-                                    // Read outputs from the FMU
-
-                                    // Store latest values for all FMU in/output variables in fmu_data_* maps
-                                    for (fmu_var, fmu_var_type) in fmu_var_types.iter() {
-                                        // Read the FMU variable value based on its type
-                                        match fmu_var_type {
-                                            VariableType::FmiFloat64 => {
-                                                let var_ref = fmu_var_refs
-                                                    .get(fmu_var)
-                                                    .expect("FMU variable reference not found.");
-                                                let var_dim = fmu_var_dims
-                                                    .get(fmu_var)
-                                                    .expect("FMU variable dimensions not found.");
-                                                let var_dim_tot =
-                                                    var_dim.iter().product::<u64>() as usize;
-                                                let mut values: Vec<f64> = vec![0.0; var_dim_tot];
-
-                                                let _ = fmu_instance
-                                                    .get_float64(&[*var_ref], &mut values);
-
-                                                fmu_data_f64.insert(fmu_var.clone(), values);
-                                            }
-                                            VariableType::FmiInt64 => {
-                                                let var_ref = fmu_var_refs
-                                                    .get(fmu_var)
-                                                    .expect("FMU variable reference not found.");
-                                                let var_dim = fmu_var_dims
-                                                    .get(fmu_var)
-                                                    .expect("FMU variable dimensions not found.");
-                                                let var_dim_tot =
-                                                    var_dim.iter().product::<u64>() as usize;
-                                                let mut values: Vec<i64> = vec![0; var_dim_tot];
-
-                                                let _ = fmu_instance
-                                                    .get_int64(&[*var_ref], &mut values);
-
-                                                fmu_data_i64.insert(fmu_var.clone(), values);
-                                            }
-                                            // TODO Refactor into a helper function and handle other variable types
-                                            _ => {
-                                                warn!(
-                                                    "[{}] Unsupported FMU variable type: {}",
-                                                    fmu_id,
-                                                    fmi3_var_type_to_string(fmu_var_type)
-                                                );
-                                            }
-                                        }
-                                    }
-
-                                    // Debug test read variables
-                                    for (fmu_var, fmu_value) in fmu_data_f64.iter() {
-                                        info!(
-                                            "[{}] FMU variable '{}' = {:?}",
-                                            fmu_id, fmu_var, fmu_value
-                                        );
-                                    }
-                                    for (fmu_var, fmu_value) in fmu_data_i64.iter() {
-                                        info!(
-                                            "[{}] FMU variable '{}' = {:?}",
-                                            fmu_id, fmu_var, fmu_value
-                                        );
-                                    }
-                                });
+                                }
+                                for (fmu_var, fmu_value) in fmu_data_i64.iter() {
+                                    info!(
+                                        "[{}] FMU variable '{}' = {:?}",
+                                        fmu_id, fmu_var, fmu_value
+                                    );
+                                }
                             }
                         }
                     }
@@ -1087,12 +964,15 @@ impl FmuDriverRust {
                     // ------------------------------------------------------------------------
                     // Publish output data for the current timestamp
 
+                    let fmu_instance = fmu_model.as_mut().unwrap().get_fmu_instance();
+
                     publish_component_output_topics_fmu3(
                         fmu_id,
                         &fmu_config_json,
                         &fmu_var_types,
-                        &fmu_data_f64,
-                        &fmu_data_i64,
+                        &fmu_var_refs,
+                        &fmu_var_dims,
+                        fmu_instance,
                         timestamp_sim,
                         &middleware,
                         &serializer,
@@ -1103,7 +983,9 @@ impl FmuDriverRust {
                         fmu_id,
                         &fmu_config_json,
                         &fmu_var_types,
-                        &fmu_data_f64,
+                        &fmu_var_refs,
+                        &fmu_var_dims,
+                        fmu_instance,
                         timestamp_sim,
                         &middleware,
                     )
