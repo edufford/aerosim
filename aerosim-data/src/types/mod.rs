@@ -68,6 +68,41 @@ pub enum AerosimMessageEnum {
     IMU(IMU),
 }
 
+pub fn deserialize_to_json(
+    type_name: &str,
+    serializer: &SerializerEnum,
+    data: &[u8],
+) -> Option<serde_json::Value> {
+    match type_name {
+        "aerosim::types::JsonData" => {
+            if let Some((_metadata, json_data)) = serializer.deserialize_message::<JsonData>(data) {
+                json_data.get_data()
+            } else {
+                None
+            }
+        }
+        "aerosim::types::TimeStamp" => serializer.to_json::<TimeStamp>(data),
+        "aerosim::types::Vector3" => serializer.to_json::<Vector3>(data),
+        "aerosim::types::VehicleState" => serializer.to_json::<VehicleState>(data),
+        "aerosim::types::EffectorState" => serializer.to_json::<EffectorState>(data),
+        "aerosim::types::AutopilotCommand" => serializer.to_json::<AutopilotCommand>(data),
+        "aerosim::types::FlightControlCommand" => serializer.to_json::<FlightControlCommand>(data),
+        "aerosim::types::AircraftEffectorCommand" => {
+            serializer.to_json::<AircraftEffectorCommand>(data)
+        }
+        "aerosim::types::PrimaryFlightDisplayData" => {
+            serializer.to_json::<PrimaryFlightDisplayData>(data)
+        }
+        "aerosim::types::TrajectoryVisualization" => {
+            serializer.to_json::<TrajectoryVisualization>(data)
+        }
+        "aerosim::types::GNSS" => serializer.to_json::<GNSS>(data),
+        "aerosim::types::ADSB" => serializer.to_json::<ADSB>(data),
+        "aerosim::types::IMU" => serializer.to_json::<IMU>(data),
+        _ => None,
+    }
+}
+
 register_types!(
     TimeStamp
     Vector3

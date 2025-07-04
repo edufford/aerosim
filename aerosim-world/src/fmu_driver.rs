@@ -1,5 +1,4 @@
 use ::log::{info, warn};
-use bevy_reflect::GetPath;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
@@ -24,10 +23,12 @@ use fmi::traits::{FmiImport, FmiInstance};
 
 use aerosim_data::{
     middleware::{
-        Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry, Serializer,
+        CallbackClosureRaw, Metadata, Middleware, MiddlewareEnum, MiddlewareRaw,
+        MiddlewareRegistry, Serializer, SerializerEnum,
     },
-    types::{JsonData, TimeStamp, TypeSupport, VehicleState, PrimaryFlightDisplayData},
+    types::{deserialize_to_json, JsonData, TimeStamp, TypeSupport},
 };
+
 use crate::fmu_utils::{
     fmi3_var_type_to_string, publish_aux_output_topics_fmu3, publish_component_output_topics_fmu3,
 };
@@ -248,6 +249,50 @@ pub fn round_microsec(sec: f64) -> f64 {
     (sec * 1e6_f64).round() / 1e6_f64
 }
 
+fn input_data_callback(
+    fmu_id_str: String,
+    serializer: SerializerEnum,
+    input_data_map: Arc<Mutex<HashMap<String, (TimeStamp, Value)>>>,
+) -> CallbackClosureRaw {
+    Box::new(move |payload: &[u8]| {
+        // Deserialize metadata from the incoming payload and determine the simulation timestamp.
+        // If the simulation timestamp is not valid, compute it based on the real-time platform timestamp.
+        let metadata = serializer
+            .deserialize_metadata(payload)
+            .ok_or(format!("Could not deserialize metadata from payload"))?;
+
+        let mut input_data_map_lock = input_data_map.lock().unwrap();
+
+        // Check if the topic already has data and if the received data is
+        // older than the existing data
+        if input_data_map_lock.contains_key(&metadata.topic)
+            && metadata.is_sim_time_valid()
+            && metadata.timestamp_sim < input_data_map_lock.get(&metadata.topic).unwrap().0
+        {
+            info!(
+                "[{}] Ignoring older data for topic: {}",
+                fmu_id_str, metadata.topic
+            );
+            return Ok(());
+        }
+
+        // Deserialize the payload into a JSON Value
+        let msg_json = deserialize_to_json(&metadata.type_name, &serializer, payload);
+
+        // Store the received data in the input data map
+        if let Some(msg_json) = msg_json {
+            input_data_map_lock.insert(metadata.topic.clone(), (metadata.timestamp_sim, msg_json));
+        } else {
+            warn!(
+                "[{}] Failed to deserialize payload for topic: {}",
+                fmu_id_str, metadata.topic
+            );
+        }
+
+        Ok(())
+    })
+}
+
 // Rust-only FmuDriverRust functions
 impl FmuDriverRust {
     async fn fmu_driver_main(
@@ -411,76 +456,14 @@ impl FmuDriverRust {
                             );
 
                             let _ = middleware
-                                .subscribe_all_raw(all_topic_to_subscribe, {
-                                    // Prepare necessary components to be moved into the callback scope.
-                                    let serializer = middleware.get_serializer();
-                                    let fmu_id_str = fmu_id.to_string();
-                                    let input_data_map = Arc::clone(&input_data_map);
-
-                                    // TODO Refactor this into input_data_callback()
-                                    Box::new(move |payload: &[u8]| {
-                                        // Deserialize metadata from the incoming payload and determine the simulation timestamp.
-                                        // If the simulation timestamp is not valid, compute it based on the real-time platform timestamp.
-                                        let metadata = serializer
-                                            .deserialize_metadata(payload)
-                                            .ok_or(format!(
-                                                "Could not deserialize metadata from payload"
-                                            ))?;
-
-                                        let mut input_data_map_lock =
-                                            input_data_map.lock().unwrap();
-
-                                        // Check if the topic already has data and if the received data is
-                                        // older than the existing data
-                                        if input_data_map_lock.contains_key(&metadata.topic)
-                                            && metadata.is_sim_time_valid()
-                                            && metadata.timestamp_sim
-                                                < input_data_map_lock
-                                                    .get(&metadata.topic)
-                                                    .unwrap()
-                                                    .0
-                                        {
-                                            info!(
-                                                "[{}] Ignoring older data for topic: {}",
-                                                fmu_id_str, metadata.topic
-                                            );
-                                            return Ok(());
-                                        }
-
-                                        // Deserialize the payload into a JSON Value
-                                        let msg_json = match metadata.type_name.as_str() {
-                                            "aerosim::types::VehicleState" => serializer.to_json::<VehicleState>(payload),
-                                            "aerosim::types::PrimaryFlightDisplayData" => serializer.to_json::<PrimaryFlightDisplayData>(payload),
-                                            "aerosim::types::JsonData" => {
-                                                let (_metadata, json_data) = serializer.deserialize_message::<JsonData>(payload).expect("Failed to deserialize JsonData payload");
-                                                json_data.get_data()
-                                            }
-                                            _ => {
-                                                warn!(
-                                                    "[{}] Unsupported input topic type: {}",
-                                                    fmu_id_str, metadata.type_name
-                                                );
-                                                None
-                                            }
-                                        };
-
-                                        // Store the received data in the input data map
-                                        if let Some(msg_json) = msg_json {
-                                            input_data_map_lock.insert(
-                                                metadata.topic.clone(),
-                                                (metadata.timestamp_sim, msg_json),
-                                            );
-                                        } else {
-                                            warn!(
-                                                "[{}] Failed to deserialize payload for topic: {}",
-                                                fmu_id_str, metadata.topic
-                                            );
-                                        }
-
-
-                                        Ok(())
-                                    })
-                                })
+                                .subscribe_all_raw(
+                                    all_topic_to_subscribe,
+                                    input_data_callback(
+                                        fmu_id.to_string(),
+                                        middleware.get_serializer(),
+                                        Arc::clone(&input_data_map),
+                                    ),
+                                )
                                 .await;
 
                             // ----------------------------------------------------------------
@@ -634,14 +617,14 @@ impl FmuDriverRust {
                                             .collect();
 
                                         info!(
-                                                "[{}] FMU ref={} var='{}', type={}, dim={:?}, causality={:?}",
-                                                fmu_id,
-                                                fmu_var_ref,
-                                                fmu_var_name,
-                                                fmi3_var_type_to_string(&fmu_var_type),
-                                                fmu_var_dim,
-                                                fmu_var_caus
-                                            );
+                                            "[{}] FMU ref={} var='{}', type={}, dim={:?}, causality={:?}",
+                                            fmu_id,
+                                            fmu_var_ref,
+                                            fmu_var_name,
+                                            fmi3_var_type_to_string(&fmu_var_type),
+                                            fmu_var_dim,
+                                            fmu_var_caus
+                                        );
 
                                         fmu_var_refs.insert(fmu_var_name.to_string(), fmu_var_ref);
                                         fmu_var_types
@@ -957,7 +940,6 @@ impl FmuDriverRust {
                                                 TypeSupport::get_flat_fields_from_json_object(
                                                     &msg_json, "",
                                                 );
-                                                
 
                                             // Iterate through the flat fields and set the FMU variables
                                                  for field in flat_fields {
@@ -971,7 +953,6 @@ impl FmuDriverRust {
 
                                                         match var_type {
                                                             VariableType::FmiFloat64 => {
-                                                                
                                                                 let new_val_f64 = msg_json.pointer(&json_path).expect("Unable to get field value from input message.")
                                                                     .as_f64()
                                                                     .expect("Field value is not a valid float64.");
