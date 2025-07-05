@@ -7,7 +7,7 @@ from aerosim_data import dict_to_namespace
 import math
 from scipy.spatial.transform import Rotation
 
-from pythonfmu3 import Fmi3Slave, Fmi3StepResult
+from pythonfmu3 import Fmi3Slave, Fmi3StepResult, Fmi3Status
 
 
 class effector:
@@ -67,7 +67,7 @@ class effector:
         self.effector_state.pose.orientation.y = q_y
         self.effector_state.pose.orientation.z = q_z
 
-        return Fmi3StepResult
+        return Fmi3StepResult(status=Fmi3Status.ok)
 
 
 # Note: The class name is used as the FMU file name
