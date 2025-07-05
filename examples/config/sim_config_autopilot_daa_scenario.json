@@ -9,6 +9,10 @@
             {
                 "topic": "aerosim.actor1.vehicle_state",
                 "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.tiltrotor_1.effector_state",
+                "interval_ms": 20
             }
         ]
     },
