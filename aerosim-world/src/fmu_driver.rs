@@ -728,14 +728,6 @@ impl FmuDriverRust {
                                 {
                                     let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
 
-                                    // Initialize the FMU states
-                                    FmiInstance::enter_initialization_mode(
-                                        fmu_instance,
-                                        None,
-                                        fmu_time,
-                                        None,
-                                    );
-
                                     // Set initial values for FMU variables set in the "fmu_initial_vals" config
                                     if let Some(fmu_init_vals_json) =
                                         fmu_config_json.get("fmu_initial_vals")
@@ -764,7 +756,17 @@ impl FmuDriverRust {
                                         }
                                     }
 
-                                    // Exit initialization mode to be ready to start stepping
+                                    // Call FMU API to execute its 'enter initialization mode' function
+                                    // to process the initial values set above
+                                    FmiInstance::enter_initialization_mode(
+                                        fmu_instance,
+                                        None,
+                                        fmu_time,
+                                        None,
+                                    );
+
+                                    // Call FMU API to execute its 'exit initialization mode' function
+                                    // to be ready to start stepping
                                     FmiInstance::exit_initialization_mode(fmu_instance);
 
                                     // Publish initial value output topics for initial timestamp
