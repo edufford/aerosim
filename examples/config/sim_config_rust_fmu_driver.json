@@ -9,6 +9,10 @@
             {
                 "topic": "aerosim.actor1.vehicle_state",
                 "interval_ms": 20
+            },
+            {
+                "topic": "aerosim.actor1.tiltrotor_1.effector_state",
+                "interval_ms": 20
             }
         ]
     },
@@ -451,7 +455,7 @@
                 "rgb_camera_chase"
             ],
             "viewport_config": {
-                "active_camera": "rgb_camera_chase"
+                "active_camera": "rgb_camera_pilot"
             }
         }
     ],
@@ -1406,6 +1410,96 @@
                     0.0
                 ],
                 "num_waypoints": 9.0
+            }
+        },
+        {
+            "id": "evtol_effectors",
+            "fmu_model_path": "fmu/evtol_effectors_fmu_model.fmu",
+            "component_type": "dynamics_model",
+            "component_input_topics": [],
+            "component_output_topics": [
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.tiltrotor_1.effector_state",
+                    "var_prefix": "tiltrotor_1"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.tiltrotor_2.effector_state",
+                    "var_prefix": "tiltrotor_2"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.tiltrotor_3.effector_state",
+                    "var_prefix": "tiltrotor_3"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.tiltrotor_4.effector_state",
+                    "var_prefix": "tiltrotor_4"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.tiltrotor_5.effector_state",
+                    "var_prefix": "tiltrotor_5"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.tiltrotor_6.effector_state",
+                    "var_prefix": "tiltrotor_6"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.rotor_1.effector_state",
+                    "var_prefix": "rotor_1"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.rotor_2.effector_state",
+                    "var_prefix": "rotor_2"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.rotor_3.effector_state",
+                    "var_prefix": "rotor_3"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.rotor_4.effector_state",
+                    "var_prefix": "rotor_4"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.rotor_5.effector_state",
+                    "var_prefix": "rotor_5"
+                },
+                {
+                    "msg_type": "aerosim::types::EffectorState",
+                    "topic": "aerosim.actor1.rotor_6.effector_state",
+                    "var_prefix": "rotor_6"
+                }
+            ],
+            "fmu_aux_input_mapping": {
+                "aerosim.actor1.evtol_vehicle.aux_out": {
+                    "tilt_deg": "tilt_deg",
+                    "proprotor_rpm": "proprotor_rpm",
+                    "liftrotor_rpm": "liftrotor_rpm"
+                }
+            },
+            "fmu_aux_output_mapping": {},
+            "fmu_initial_vals": {
+                "rotor_1.pose.orientation.w": 1.0,
+                "rotor_2.pose.orientation.w": 1.0,
+                "rotor_3.pose.orientation.w": 1.0,
+                "rotor_4.pose.orientation.w": 1.0,
+                "rotor_5.pose.orientation.w": 1.0,
+                "rotor_6.pose.orientation.w": 1.0,
+                "tiltrotor_1.pose.orientation.w": 1.0,
+                "tiltrotor_2.pose.orientation.w": 1.0,
+                "tiltrotor_3.pose.orientation.w": 1.0,
+                "tiltrotor_4.pose.orientation.w": 1.0,
+                "tiltrotor_5.pose.orientation.w": 1.0,
+                "tiltrotor_6.pose.orientation.w": 1.0
             }
         }
     ]

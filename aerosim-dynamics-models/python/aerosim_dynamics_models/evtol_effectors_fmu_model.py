@@ -7,7 +7,7 @@ from aerosim_data import dict_to_namespace
 import math
 from scipy.spatial.transform import Rotation
 
-from pythonfmu3 import Fmi3Slave
+from pythonfmu3 import Fmi3Slave, Fmi3StepResult
 
 
 class effector:
@@ -35,7 +35,7 @@ class effector:
 
     def do_step(
         self, dt_s: float, tilt_deg: float, proprotor_rpm: float, liftrotor_rpm: float
-    ):
+    ) -> Fmi3StepResult:
         # Calculate conversion variables
         rpm_to_deg = (
             dt_s * 6.0
@@ -66,6 +66,8 @@ class effector:
         self.effector_state.pose.orientation.x = q_x
         self.effector_state.pose.orientation.y = q_y
         self.effector_state.pose.orientation.z = q_z
+
+        return Fmi3StepResult
 
 
 # Note: The class name is used as the FMU file name
