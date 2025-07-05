@@ -4,7 +4,6 @@ use crate::AerosimMessage;
 use chrono::{DateTime, Utc};
 use std::time::Duration;
 
-use bevy_reflect::Reflect;
 use pyo3::{
     prelude::*,
     types::{PyCapsule, PyDict},
@@ -25,7 +24,6 @@ use serde::{Deserialize, Serialize};
     PartialOrd,
     Ord,
     JsonSchema,
-    Reflect,
     aerosim_macros::AerosimMessage,
 )]
 pub struct TimeStamp {

@@ -70,34 +70,6 @@ impl TypeSupport {
         serde_json::to_vec(&self.schema).ok()
     }
 
-    pub fn get_flat_field_names(
-        dyn_struct: &dyn bevy_reflect::Struct,
-        prefix: &str,
-    ) -> Vec<String> {
-        let mut results = Vec::new();
-
-        for (i, struct_field) in dyn_struct.iter_fields().enumerate() {
-            let field_name = dyn_struct.name_at(i).unwrap();
-            // println!("recursive_iterate_dyn_struct field {}: {}", i, field_name);
-            let full_name = if prefix.is_empty() {
-                field_name.to_string()
-            } else {
-                format!("{}.{}", prefix, field_name)
-            };
-
-            match struct_field.reflect_ref() {
-                bevy_reflect::ReflectRef::Struct(sub_struct) => {
-                    results.extend(Self::get_flat_field_names(sub_struct, &full_name));
-                }
-                _ => {
-                    results.push(full_name);
-                }
-            }
-        }
-
-        results
-    }
-
     pub fn get_flat_fields_from_json_object(
         json_value: &serde_json::Value,
         prefix: &str,

@@ -1,7 +1,7 @@
 use super::geometry::{Pose, Vector3};
 use super::sensor::SensorType;
 use super::vehicle::VehicleType;
-use bevy_reflect::Reflect;
+
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use schemars::JsonSchema;
@@ -29,7 +29,7 @@ pub struct Actor {
     pub parent_actor_uid: Option<u64>,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, Reflect)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
 #[pyclass(get_all)]
 pub struct ActorState {
     pub pose: Pose,

@@ -1,5 +1,5 @@
 use crate::{types::PyTypeSupport, AerosimMessage};
-use bevy_reflect::Reflect;
+
 use pyo3::prelude::*;
 use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
@@ -18,7 +18,6 @@ use strum_macros::{Display, EnumString};
     PartialEq,
     AerosimMessage,
     JsonSchema,
-    Reflect,
 )]
 #[repr(u8)]
 #[pyclass(eq, eq_int, get_all, set_all)]
@@ -57,7 +56,7 @@ impl HSIMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
+#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
 #[pyclass(get_all)]
 pub struct PrimaryFlightDisplayData {
     pub airspeed_kts: f64,                    // JSBSim "velocities/vc-kts"

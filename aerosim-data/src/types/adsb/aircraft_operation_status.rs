@@ -1,4 +1,3 @@
-use bevy_reflect::Reflect;
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -6,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::types::{ADSBVersion, CapabilityClassAirborne, CapabilityClassSurface, OperationalMode};
 
 #[pyclass(get_all)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AircraftOperationStatusAirborne {
     pub capability_class: CapabilityClassAirborne,
     pub operational_mode: OperationalMode,
@@ -55,7 +54,7 @@ impl AircraftOperationStatusAirborne {
 }
 
 #[pyclass(get_all)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AircraftOperationStatusSurface {
     pub capability_class: CapabilityClassSurface,
     pub lw_codes: u8,

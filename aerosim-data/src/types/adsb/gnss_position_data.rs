@@ -1,10 +1,9 @@
-use bevy_reflect::Reflect;
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[pyclass(get_all)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default, JsonSchema, Reflect)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct GNSSPositionData {
     pub latitude: f64,
     pub longitude: f64,

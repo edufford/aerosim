@@ -1,4 +1,3 @@
-use bevy_reflect::Reflect;
 use pyo3::prelude::*;
 use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
@@ -16,7 +15,6 @@ use crate::{types::PyTypeSupport, AerosimMessage};
     PartialEq,
     aerosim_macros::AerosimMessage,
     JsonSchema,
-    Reflect,
 )]
 pub struct Vector3 {
     pub x: f64,
@@ -57,9 +55,7 @@ impl Vector3 {
 }
 
 #[pyclass(get_all, set_all)]
-#[derive(
-    Clone, Copy, Debug, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema, Reflect,
-)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
 pub struct Quaternion {
     pub w: f64,
     pub x: f64,
@@ -102,9 +98,7 @@ impl Quaternion {
 }
 
 #[pyclass(get_all, set_all)]
-#[derive(
-    Clone, Debug, Default, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema, Reflect,
-)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
 
 pub struct Pose {
     pub position: Vector3,

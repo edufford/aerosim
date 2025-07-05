@@ -28,5 +28,3 @@ bevy_transform = "0.15.0"
 fmi = { git = "https://github.com/edufford/rust-fmi.git", branch = "edufford/int_array" }
 itertools = "0.14.0"
 mcap="0.15.0"
-ouroboros = "0.18.5"
-bevy_reflect.workspace = true

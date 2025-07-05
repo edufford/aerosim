@@ -1,4 +1,3 @@
-use bevy_reflect::Reflect;
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -6,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::types::adsb::types::ICAOAddress;
 
 #[pyclass(get_all)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, Reflect)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct LongAirAir {
     pub icao: ICAOAddress,
     pub altitude: u16,

@@ -1,4 +1,3 @@
-use bevy_reflect::Reflect;
 use pyo3::prelude::*;
 use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
@@ -13,14 +12,7 @@ use super::PyTypeSupport;
 //
 
 #[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    aerosim_macros::AerosimMessage,
-    JsonSchema,
-    Default,
-    Reflect,
+    Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Default,
 )]
 #[pyclass(get_all)]
 pub struct TrajectoryVisualization {
@@ -66,9 +58,7 @@ impl TrajectoryVisualization {
     }
 }
 
-#[derive(
-    Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Reflect,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema)]
 #[pyclass(get_all)]
 pub struct TrajectoryVisualizationSettings {
     pub display_future_trajectory: bool,
@@ -133,14 +123,7 @@ impl TrajectoryVisualizationSettings {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    aerosim_macros::AerosimMessage,
-    JsonSchema,
-    Default,
-    Reflect,
+    Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Default,
 )]
 #[pyclass(get_all, set_all)]
 pub struct TrajectoryWaypoints {

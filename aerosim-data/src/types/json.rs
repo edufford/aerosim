@@ -3,7 +3,6 @@ use schemars::JsonSchema;
 use crate::types::PyTypeSupport;
 use crate::AerosimMessage;
 
-use bevy_reflect::Reflect;
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyCapsule};
 use pythonize::{depythonize, pythonize};
 use serde::{Deserialize, Serialize};
@@ -11,14 +10,7 @@ use serde_json;
 
 #[pyclass]
 #[derive(
-    Clone,
-    Debug,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    aerosim_macros::AerosimMessage,
-    JsonSchema,
-    Reflect,
+    Clone, Debug, Serialize, Deserialize, PartialEq, aerosim_macros::AerosimMessage, JsonSchema,
 )]
 pub struct JsonData {
     data: String,
