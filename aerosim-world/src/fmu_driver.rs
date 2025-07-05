@@ -29,7 +29,7 @@ use aerosim_data::{
 
 use crate::fmu_utils::{
     fmi3_var_type_to_string, publish_aux_output_topics_fmu3, publish_component_output_topics_fmu3,
-    set_init_value_fmu3,
+    set_fmu3_from_json, set_init_value_fmu3,
 };
 
 #[pyclass]
@@ -699,22 +699,24 @@ impl FmuDriverRust {
 
                         "start" => {
                             info!("[{}] Received orchestrator start command.", fmu_id);
-                            // # Save sim start time from the orchestrator (not used anywhere yet)
-                            let sim_start_time_sec = msg_json
+                            {
+                                // # Save sim start time from the orchestrator (not used anywhere yet)
+                                let sim_start_time_sec = msg_json
                                 .pointer("/parameters/sim_start_time/sec")
                                 .expect(
                                     "Unable to get ['parameters']['sim_start_time']['sec'] field from JSON",
                                 ).as_i64().expect("Unable to get 'sec' as i64");
-                            let sim_start_time_nanosec = msg_json
+                                let sim_start_time_nanosec = msg_json
                                 .pointer("/parameters/sim_start_time/nanosec")
                                 .expect(
                                     "Unable to get ['parameters']['sim_start_time']['nanosec'] field from JSON",
                                 ).as_u64().expect("Unable to get 'nanosec' as u64");
-                            let sim_start_time = TimeStamp::new(
-                                sim_start_time_sec as i32,
-                                sim_start_time_nanosec as u32,
-                            );
-                            info!("[{}] Sim start time: {:?}", fmu_id, sim_start_time);
+                                let sim_start_time = TimeStamp::new(
+                                    sim_start_time_sec as i32,
+                                    sim_start_time_nanosec as u32,
+                                );
+                                info!("[{}] Sim start time: {:?}", fmu_id, sim_start_time);
+                            }
 
                             let initial_timestamp = metadata.timestamp_sim;
 
@@ -840,79 +842,39 @@ impl FmuDriverRust {
                                 // ------------------------------------------------------------
                                 // Write inputs to the FMU
 
-                                // TODO Process every input topic that has been received and stored in input_data_map
+                                // Process every input topic that has been received and stored in input_data_map
                                 {
                                     let mut input_data_map_lock = input_data_map.lock().unwrap();
                                     let cur_input_data = input_data_map_lock.drain();
 
-                                    for (input_topic, (timestamp, msg_json)) in cur_input_data {
-                                        info!(
-                                            "[{}] Writing input topic '{}' at timestamp: {:?}",
-                                            fmu_id, input_topic, timestamp
-                                        );
+                                    for (_input_topic, (_timestamp, in_msg_json)) in cur_input_data {
+                                        // info!(
+                                        //     "[{}] Writing input topic '{}' at timestamp: {:?}",
+                                        //     fmu_id, input_topic, timestamp
+                                        // );
 
-                                        let flat_fields =
+                                        let in_flat_fields =
                                             TypeSupport::get_flat_fields_from_json_object(
-                                                &msg_json, "",
+                                                &in_msg_json,
+                                                "",
                                             );
 
                                         // Iterate through the flat fields and set the FMU variables
-                                        for field in flat_fields {
-                                            let var_info = fmu_model_var_info_ref
-                                                .get_fmu_var_info(&field)
-                                                .expect("FMU variable info not found for field.");
-                                            let json_path =
-                                                TypeSupport::dot_notation_to_json_path(&field);
-                                            match var_info.fmu_var_type {
-                                                VariableType::FmiFloat64 => {
-                                                    let new_val_f64 = msg_json.pointer(&json_path).expect("Unable to get field value from input message.")
-                                                                    .as_f64()
-                                                                    .expect("Field value is not a valid float64.");
-
-                                                    let values = vec![new_val_f64];
-
-                                                    let _ = fmu_instance.set_float64(
-                                                        &[var_info.fmu_var_ref],
-                                                        &values,
-                                                    );
-                                                    info!(
-                                                        "[{}] Set FMU variable '{}' to value: {:?}",
-                                                        fmu_id, field, values
-                                                    );
-                                                }
-                                                VariableType::FmiInt64 => {
-                                                    let new_val_i64 = msg_json.pointer(&json_path).expect("Unable to get field value from input message.")
-                                                                    .as_i64()
-                                                                    .expect("Field value is not a valid int64.");
-
-                                                    let values = vec![new_val_i64];
-
-                                                    let _ = fmu_instance.set_int64(
-                                                        &[var_info.fmu_var_ref],
-                                                        &values,
-                                                    );
-                                                    info!(
-                                                        "[{}] Set FMU variable '{}' to value: {:?}",
-                                                        fmu_id, field, values
-                                                    );
-                                                }
-                                                // TODO Refactor and handle other variable types
-                                                _ => {
-                                                    warn!(
-                                                                    "[{}] Unsupported FMU variable type for '{}': {}",
-                                                                    fmu_id,
-                                                                    field,
-                                                                    fmi3_var_type_to_string(&var_info.fmu_var_type)
-                                                                );
-                                                    continue;
-                                                }
-                                            }
+                                        for in_fmu_var in in_flat_fields {
+                                            set_fmu3_from_json(
+                                                &in_fmu_var,
+                                                &in_msg_json,
+                                                fmu_id,
+                                                fmu_model_var_info_ref,
+                                                fmu_instance,
+                                            );
                                         }
                                     }
                                 }
 
                                 // ------------------------------------------------------------
                                 // Do one step of the FMU
+
                                 let no_set_fmu_state_prior_to_current_point = false;
 
                                 let mut event_handling_needed = false;

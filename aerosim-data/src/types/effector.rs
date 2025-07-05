@@ -7,7 +7,7 @@ use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 #[pyclass(get_all)]
 pub struct EffectorState {
     pub pose: Pose,

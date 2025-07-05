@@ -397,6 +397,16 @@ pub struct ADSB {
     pub message: DownlinkFormat,
 }
 
+impl Default for ADSB {
+    fn default() -> Self {
+        ADSB {
+            message: DownlinkFormat::GNSSPositionData(
+                crate::types::adsb::gnss_position_data::GNSSPositionData::default(),
+            ),
+        }
+    }
+}
+
 #[pymethods]
 impl ADSB {
     #[new]
@@ -413,7 +423,7 @@ impl ADSB {
 }
 
 #[pyclass(get_all, set_all)]
-#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 pub struct GNSS {
     pub latitude: f64,
     pub longitude: f64,
@@ -454,7 +464,7 @@ impl GNSS {
 }
 
 #[pyclass(get_all, set_all)]
-#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, AerosimMessage, JsonSchema, Reflect)]
 pub struct IMU {
     acceleration: Vector3,
     gyroscope: Vector3,
