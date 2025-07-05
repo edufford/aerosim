@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use fmi::fmi2::import::Fmi2Import;
 use fmi::fmi3::import::Fmi3Import;
-use fmi::fmi3::instance::{CoSimulation, Common};
+use fmi::fmi3::instance::CoSimulation;
 use fmi::schema::{
     fmi3::{ArrayableVariableTrait, VariableType},
     traits::FmiModelDescription,
@@ -983,6 +983,7 @@ impl FmuDriverRust {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fmi::fmi3::instance::Common;
 
     #[test]
     fn test_fmu_float64_array() {
