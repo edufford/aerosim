@@ -849,7 +849,8 @@ impl FmuDriverRust {
                                     let mut input_data_map_lock = input_data_map.lock().unwrap();
                                     let cur_input_data = input_data_map_lock.drain();
 
-                                    for (_input_topic, (_timestamp, in_msg_json)) in cur_input_data {
+                                    for (_input_topic, (_timestamp, in_msg_json)) in cur_input_data
+                                    {
                                         // info!(
                                         //     "[{}] Writing input topic '{}' at timestamp: {:?}",
                                         //     fmu_id, input_topic, timestamp
