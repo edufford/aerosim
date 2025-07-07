@@ -3,12 +3,12 @@ appenders:
   stdout:
     kind: console
     encoder:
-      pattern: "{d} [{t}] {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%6f)} {l} [{t}] {m}{n}"
   simlog:
     kind: file
     path: "log/aerosim.log"
     encoder:
-      pattern: "{d} [{t}] {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%6f)} {l} [{t}] {m}{n}"
 root:
   level: info
   appenders:
@@ -17,4 +17,3 @@ root:
 loggers:
   info:  # fmi crate logs info messages with logger target as "info"
     level: warn  # change to "warn" level to filter out fmi info messages
-    
