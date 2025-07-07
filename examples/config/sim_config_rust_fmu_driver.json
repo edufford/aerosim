@@ -459,6 +459,7 @@
             }
         }
     ],
+    "fmu_driver_type": "rust",
     "fmu_models": [
         {
             "id": "evtol_vehicle",

@@ -33,7 +33,7 @@ use crate::fmu_utils::{
 };
 
 #[pyclass]
-pub struct FmuDriverRust {
+pub struct FmuDriver {
     #[pyo3(get)]
     fmu_id: String,
     working_dir: String,
@@ -44,10 +44,10 @@ pub struct FmuDriverRust {
 }
 
 #[pymethods]
-impl FmuDriverRust {
+impl FmuDriver {
     #[new]
     fn __new__(fmu_id: &str, working_dir: &str, _middleware_type: &str) -> Self {
-        let mut fmu_driver = FmuDriverRust {
+        let mut fmu_driver = FmuDriver {
             fmu_id: fmu_id.to_string(),
             working_dir: working_dir.to_string(),
             middleware: MiddlewareRegistry::new()
@@ -72,7 +72,7 @@ impl FmuDriverRust {
             match middleware
                 .subscribe::<JsonData>("aerosim.orchestrator.commands", {
                     Box::new(move |data, metadata| {
-                        FmuDriverRust::handle_orchestrator_command_message(
+                        FmuDriver::handle_orchestrator_command_message(
                             data,
                             metadata,
                             &tx_orchestrator_msg,
@@ -98,7 +98,7 @@ impl FmuDriverRust {
                 .subscribe::<JsonData>("aerosim.clock", {
                     let fmu_id = fmu_driver.fmu_id.clone();
                     Box::new(move |data, metadata| {
-                        FmuDriverRust::handle_clock_message(data, metadata, &tx_clock_msg, &fmu_id);
+                        FmuDriver::handle_clock_message(data, metadata, &tx_clock_msg, &fmu_id);
                         Ok(())
                     })
                 })
@@ -121,7 +121,7 @@ impl FmuDriverRust {
         fmu_driver.fmu_driver_thread_handle = Some(
             thread_builder
                 .spawn(move || {
-                    runtime.block_on(FmuDriverRust::fmu_driver_main(
+                    runtime.block_on(FmuDriver::fmu_driver_main(
                         rx_stop,
                         rx_clock_msg,
                         rx_orchestrator_msg,
@@ -436,7 +436,7 @@ fn input_data_callback(
 }
 
 // Rust-only FmuDriverRust functions
-impl FmuDriverRust {
+impl FmuDriver {
     async fn fmu_driver_main(
         rx_stop: Receiver<bool>,
         rx_clock_msg: Receiver<(JsonData, Metadata)>,

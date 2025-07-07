@@ -14,8 +14,8 @@ from aerosim_data import flatten_to_dict
 from aerosim_sensors import adsb_functions
 
 
-class FmuDriver:
-    def __init__(self, fmu_id: str, working_dir: str = "") -> None:
+class PyFmuDriver:
+    def __init__(self, fmu_id: str, working_dir: str = "", middleware_type = "kafka") -> None:
         self.fmu_id = fmu_id
         self.working_dir = working_dir
         self.unzipped_temp_dir = None
@@ -29,7 +29,7 @@ class FmuDriver:
         self._running = True
         self._processing_callback_lock = threading.Lock()
 
-        self.transport = middleware.get_transport("kafka")
+        self.transport = middleware.get_transport(middleware_type)
         self.serializer = self.transport.get_serializer()
 
         self.transport.subscribe(
@@ -514,13 +514,7 @@ class FmuDriver:
                         var_prefix = "gnss"
                     elif msg_type == "aerosim::types::ADSB":
                         out_data = adsb_functions.adsb_from_gnss_data(
-                            0.0,
-                            0.0,
-                            0.0,
-                            0.0,
-                            0.0,
-                            0.0,
-                            0.0
+                            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
                         ).to_dict()
                         var_prefix = "adsb"
                     elif msg_type == "aerosim::types::IMU":

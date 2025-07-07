@@ -14,6 +14,6 @@ use pyo3::prelude::*;
 #[pymodule]
 fn _aerosim_world(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<orchestrator::Orchestrator>()?;
-    m.add_class::<fmu_driver::FmuDriverRust>()?;
+    m.add_class::<fmu_driver::FmuDriver>()?;
     Ok(())
 }

@@ -151,6 +151,7 @@
             }
         }
     ],
+    "fmu_driver_type": "rust",
     "fmu_models": [
         {
             "id": "1DOF_dynamics",
