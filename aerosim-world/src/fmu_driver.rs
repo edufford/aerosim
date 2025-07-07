@@ -177,11 +177,11 @@ pub struct Fmi3VarInfo {
 }
 
 pub struct Fmi3ModelVarInfo {
-    fmu_var_info: HashMap<String, Fmi3VarInfo>,
+    pub fmu_var_info: HashMap<String, Fmi3VarInfo>,
 }
 
 impl Fmi3ModelVarInfo {
-    pub fn new(fmi3_model: &Fmi3Model) -> Self {
+    pub fn new(fmu_id: &str, fmi3_model: &Fmi3Model) -> Self {
         let mut fmu_var_info: HashMap<String, Fmi3VarInfo> = HashMap::new();
         let fmu_model_desc = fmi3_model.get_fmu_instance_ref().model_description();
 
@@ -270,7 +270,8 @@ impl Fmi3ModelVarInfo {
                 .expect("Unable to convert total dimension to usize");
 
             info!(
-                "FMU ref={} var='{}', type={}, dim={:?}, causality={:?}",
+                "[{}] FMU ref={} var='{}', type={}, dim={:?}, causality={:?}",
+                fmu_id,
                 fmu_var_ref,
                 fmu_var_name,
                 fmi3_var_type_to_string(&fmu_var_type),
@@ -397,7 +398,7 @@ pub fn round_microsec(sec: f64) -> f64 {
 fn input_data_callback(
     fmu_id_str: String,
     serializer: SerializerEnum,
-    input_data_map: Arc<Mutex<HashMap<String, (TimeStamp, Value)>>>,
+    input_data_map: Arc<Mutex<HashMap<String, (Metadata, Value)>>>,
 ) -> CallbackClosureRaw {
     Box::new(move |payload: &[u8]| {
         // Deserialize metadata from the incoming payload and determine the simulation timestamp.
@@ -410,20 +411,23 @@ fn input_data_callback(
 
         // Check if the topic already has data and if the received data is
         // older than the existing data
-        if input_data_map_lock.contains_key(&metadata.topic)
-            && metadata.is_sim_time_valid()
-            && metadata.timestamp_sim < input_data_map_lock.get(&metadata.topic).unwrap().0
+        if let Some((existing_metadata, _existing_data)) = input_data_map_lock.get(&metadata.topic)
         {
-            info!(
-                "[{}] Ignoring older data for topic: {}",
-                fmu_id_str, metadata.topic
-            );
-            return Ok(());
+            if metadata.is_sim_time_valid()
+                && existing_metadata.is_sim_time_valid()
+                && metadata.timestamp_sim < existing_metadata.timestamp_sim
+            {
+                info!(
+                    "[{}] Ignoring older data for topic: {}",
+                    fmu_id_str, metadata.topic
+                );
+                return Ok(());
+            }
         }
 
         // Deserialize the payload into a JSON value and store it in the input data map
         if let Some(msg_json) = deserialize_to_json(&metadata.type_name, &serializer, payload) {
-            input_data_map_lock.insert(metadata.topic.clone(), (metadata.timestamp_sim, msg_json));
+            input_data_map_lock.insert(metadata.topic.clone(), (metadata, msg_json));
         } else {
             warn!(
                 "[{}] Failed to deserialize payload for topic: {}",
@@ -461,7 +465,7 @@ impl FmuDriver {
         let mut fmu_model_var_info: Option<Fmi3ModelVarInfo> = None;
         let mut fmu_time: f64 = 0.0;
 
-        let input_data_map: Arc<Mutex<HashMap<String, (TimeStamp, Value)>>> =
+        let input_data_map: Arc<Mutex<HashMap<String, (Metadata, Value)>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
         while running {
@@ -662,8 +666,10 @@ impl FmuDriver {
 
                                     // Load the FMU instance
                                     fmu_model = Some(Fmi3Model::new(fmu_filename));
-                                    fmu_model_var_info =
-                                        Some(Fmi3ModelVarInfo::new(fmu_model.as_ref().unwrap()));
+                                    fmu_model_var_info = Some(Fmi3ModelVarInfo::new(
+                                        fmu_id,
+                                        fmu_model.as_ref().unwrap(),
+                                    ));
                                 }
                             }
 
@@ -849,24 +855,34 @@ impl FmuDriver {
                                     let mut input_data_map_lock = input_data_map.lock().unwrap();
                                     let cur_input_data = input_data_map_lock.drain();
 
-                                    for (_input_topic, (_timestamp, in_msg_json)) in cur_input_data
+                                    for (input_topic, (in_msg_metadata, in_msg_json)) in
+                                        cur_input_data
                                     {
                                         // info!(
                                         //     "[{}] Writing input topic '{}' at timestamp: {:?}",
-                                        //     fmu_id, input_topic, timestamp
+                                        //     fmu_id, input_topic, in_msg_metadata.timestamp_sim
                                         // );
 
-                                        let in_flat_fields =
+                                        let in_msg_flat_fields =
                                             TypeSupport::get_flat_fields_from_json_object(
                                                 &in_msg_json,
                                                 "",
                                             );
 
+                                        let aux_in_var_map = fmu_config_json
+                                            .get("fmu_aux_input_mapping")
+                                            .and_then(|aux_in_mapping| {
+                                                aux_in_mapping.get(&input_topic)
+                                            })
+                                            .and_then(|aux_in_mapping| aux_in_mapping.as_object());
+
                                         // Iterate through the flat fields and set the FMU variables
-                                        for in_fmu_var in in_flat_fields {
+                                        for in_msg_var in in_msg_flat_fields {
                                             set_fmu3_from_json(
-                                                &in_fmu_var,
+                                                &in_msg_var,
                                                 &in_msg_json,
+                                                &in_msg_metadata,
+                                                aux_in_var_map,
                                                 fmu_id,
                                                 fmu_model_var_info_ref,
                                                 fmu_instance,

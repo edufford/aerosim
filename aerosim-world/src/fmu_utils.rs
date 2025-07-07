@@ -36,6 +36,25 @@ pub fn fmi3_var_type_to_string(var_type: &VariableType) -> String {
     };
 }
 
+pub fn aerosim_msg_type_to_prefix(msg_type: &str) -> String {
+    match msg_type {
+        "aerosim::types::VehicleState" => "vehicle_state".to_string(),
+        "aerosim::types::EffectorState" => "effector_state".to_string(),
+        "aerosim::types::AutopilotCommand" => "autopilot_command".to_string(),
+        "aerosim::types::FlightControlCommand" => "flight_control_command".to_string(),
+        "aerosim::types::AircraftEffectorCommand" => "aircraft_effector_command".to_string(),
+        "aerosim::types::PrimaryFlightDisplayData" => "primary_flight_display_data".to_string(),
+        "aerosim::types::TrajectoryVisualization" => "trajectory_visualization".to_string(),
+        "aerosim::types::GNSS" => "gnss".to_string(),
+        "aerosim::types::ADSB" => "adsb".to_string(),
+        "aerosim::types::IMU" => "imu".to_string(),
+        _ => {
+            warn!("Unsupported message type: {}", msg_type);
+            "".to_string()
+        }
+    }
+}
+
 pub fn set_init_value_fmu3(
     fmu_id: &str,
     init_var: &str,
@@ -141,26 +160,61 @@ pub fn set_init_value_fmu3(
 }
 
 pub fn set_fmu3_from_json(
-    in_fmu_var: &str,
-    in_msg_json: &serde_json::Value,
+    in_msg_var: &str,
+    in_msg_json: &Value,
+    in_msg_metadata: &Metadata,
+    aux_in_var_map: Option<&serde_json::Map<String, Value>>,
     fmu_id: &str,
     fmu_model_var_info_ref: &Fmi3ModelVarInfo,
     fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
 ) {
+    // Process variable based on if it's an aux input mapped variable or a regular
+    // component input variable with dot notation naming.
+    let in_fmu_var;
+    let var_as_pointer;
+    if let Some(aux_in_map) = aux_in_var_map {
+        // Aux input variable (direct mapping from topic variable to FMU variable)
+        if let Some(mapped_var) = aux_in_map.get(in_msg_var).and_then(|v| v.as_str()) {
+            in_fmu_var = mapped_var.to_string();
+        } else {
+            // Skip setting it if this variable is not mapped in this aux topic's config
+            return;
+        }
+        var_as_pointer = false;
+    } else {
+        // Regular input variable (dot notation fields with prefix)
+        let prefix = aerosim_msg_type_to_prefix(&in_msg_metadata.type_name);
+        in_fmu_var = prefix.to_string() + "." + in_msg_var;
+        var_as_pointer = true;
+    }
+
+    // Get the FMU variable info
     let var_info = fmu_model_var_info_ref
         .get_fmu_var_info(&in_fmu_var)
-        .expect("FMU variable info not found for field.");
-    let in_var_json_path = TypeSupport::dot_notation_to_json_path(&in_fmu_var);
-    let mut new_val: &Value = in_msg_json
-        .pointer(&in_var_json_path)
-        .expect("Unable to get field value from input message.");
+        .expect("FMU variable not found in fmu_model_var_info");
+
+    // Get the variable value from the JSON message
+    let mut new_val;
+    if var_as_pointer {
+        let in_var_json_path = TypeSupport::dot_notation_to_json_path(&in_msg_var);
+        new_val = in_msg_json
+            .pointer(&in_var_json_path)
+            .expect("Unable to get JSON pointer.");
+    } else {
+        new_val = in_msg_json
+            .get(&in_msg_var)
+            .expect("Unable to get JSON value directly.");
+    }
+
+    // If the new_val (value reference) is not an array, convert it to a reference to a
+    // single-element array for setting in the FMU instance.
     let single_elem_array: Value;
     if !new_val.is_array() {
-        // Convert single value to an array for consistency
         single_elem_array = serde_json::Value::Array(vec![new_val.clone()]);
         new_val = &single_elem_array;
     }
 
+    // Set the FMU variable based on its type
     match var_info.fmu_var_type {
         VariableType::FmiFloat64 => {
             let values = new_val
@@ -300,15 +354,22 @@ pub fn set_json_from_fmu3(
     fmu_model_var_info: &Fmi3ModelVarInfo,
     fmu_instance: &mut fmi::fmi3::instance::InstanceCS<'_>,
     msg_struct_json: &mut serde_json::Value,
-    json_var_name: &str,
+    json_var: &str,
+    json_var_as_pointer: bool,
 ) {
     if let Some(fmu_var_info) = fmu_model_var_info.get_fmu_var_info(&fmu_var_name) {
-        let json_path = TypeSupport::dot_notation_to_json_path(json_var_name);
+        // Get the JSON value reference to the variable to write to
+        let val_mut = if json_var_as_pointer {
+            msg_struct_json
+                .pointer_mut(&json_var)
+                .expect("Unable to get json_var_path as pointer from JSON struct")
+        } else {
+            msg_struct_json
+                .get_mut(&json_var)
+                .expect("Unable to get json_var_path directly from JSON struct")
+        };
 
-        let val_mut = msg_struct_json
-            .pointer_mut(&json_path)
-            .expect("Unable to get field from JSON struct");
-
+        // Get the FMU variable value based on its type
         let fmu_value: serde_json::Value = match fmu_var_info.fmu_var_type {
             VariableType::FmiFloat64 => {
                 let mut values: Vec<f64> = vec![0.0; fmu_var_info.fmu_var_tot_dim];
@@ -382,8 +443,10 @@ pub fn set_json_from_fmu3(
             }
         };
 
-        *val_mut = if fmu_var_info.fmu_var_tot_dim == 1 {
-            // If the variable is a scalar, set it directly
+        // Write the FMU value to the JSON value reference
+        *val_mut = if fmu_var_info.fmu_var_dim.is_empty() {
+            // If the variable is a scalar, set it as a single number value
+            // from the FMU value array that should contain only one element.
             fmu_value
                 .as_array()
                 .and_then(|arr| arr.get(0))
@@ -396,6 +459,7 @@ pub fn set_json_from_fmu3(
                     serde_json::Value::Null
                 })
         } else {
+            // Set it directly to the FMU value array.
             fmu_value
         };
     } else {
@@ -404,38 +468,6 @@ pub fn set_json_from_fmu3(
             fmu_id, fmu_var_name
         );
     }
-}
-
-pub fn pack_raw_aerosim_fmu_msg<T: AerosimMessage + Default>(
-    fmu_id: &str,
-    var_prefix: &str,
-    fmu_model_var_info: &Fmi3ModelVarInfo,
-    fmu_instance: &mut fmi::fmi3::instance::InstanceCS<'_>,
-    serializer: &SerializerEnum,
-    metadata: &Metadata,
-) -> Vec<u8> {
-    let msg_struct = T::default();
-    let mut out_msg_json =
-        serde_json::to_value(&msg_struct).expect("Unable to serialize struct to JSON");
-
-    let out_flat_fields = TypeSupport::get_flat_fields_from_json_object(&out_msg_json, "");
-
-    // Set the fields in the message struct using the flat field names and FMU data.
-    for field_name in &out_flat_fields {
-        let fmu_var_name = var_prefix.to_string() + "." + field_name;
-        set_json_from_fmu3(
-            fmu_id,
-            &fmu_var_name,
-            fmu_model_var_info,
-            fmu_instance,
-            &mut out_msg_json,
-            &field_name,
-        );
-    }
-
-    serializer
-        .from_json::<T>(metadata, out_msg_json)
-        .expect("Unable to serialize struct from JSON")
 }
 
 pub async fn publish_component_output_topics_fmu3(
@@ -464,7 +496,7 @@ pub async fn publish_component_output_topics_fmu3(
                 .as_str()
                 .expect("Unable to get 'topic' as string");
 
-            let mut var_prefix = "".to_string();
+            let mut var_prefix = aerosim_msg_type_to_prefix(msg_type);
             // Override var_prefix if one is provided in config
             if let Some(var_prefix_config) = out_topic_info.get("var_prefix") {
                 var_prefix = var_prefix_config
@@ -476,49 +508,31 @@ pub async fn publish_component_output_topics_fmu3(
             let metadata = Metadata::new(out_topic, msg_type, Some(timestamp), None);
 
             let serialized_msg: Vec<u8> = match msg_type {
-                "aerosim::types::VehicleState" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "vehicle_state".to_string();
-                    }
-                    pack_raw_aerosim_fmu_msg::<VehicleState>(
-                        fmu_id,
-                        &var_prefix,
-                        fmu_model_var_info,
-                        fmu_instance,
-                        serializer,
-                        &metadata,
-                    )
-                }
-                "aerosim::types::EffectorState" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "effector_state".to_string();
-                    }
-                    pack_raw_aerosim_fmu_msg::<EffectorState>(
-                        fmu_id,
-                        &var_prefix,
-                        fmu_model_var_info,
-                        fmu_instance,
-                        serializer,
-                        &metadata,
-                    )
-                }
-                "aerosim::types::AutopilotCommand" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "autopilot_command".to_string();
-                    }
-                    pack_raw_aerosim_fmu_msg::<AutopilotCommand>(
-                        fmu_id,
-                        &var_prefix,
-                        fmu_model_var_info,
-                        fmu_instance,
-                        serializer,
-                        &metadata,
-                    )
-                }
+                "aerosim::types::VehicleState" => pack_raw_aerosim_fmu_msg::<VehicleState>(
+                    fmu_id,
+                    &var_prefix,
+                    fmu_model_var_info,
+                    fmu_instance,
+                    serializer,
+                    &metadata,
+                ),
+                "aerosim::types::EffectorState" => pack_raw_aerosim_fmu_msg::<EffectorState>(
+                    fmu_id,
+                    &var_prefix,
+                    fmu_model_var_info,
+                    fmu_instance,
+                    serializer,
+                    &metadata,
+                ),
+                "aerosim::types::AutopilotCommand" => pack_raw_aerosim_fmu_msg::<AutopilotCommand>(
+                    fmu_id,
+                    &var_prefix,
+                    fmu_model_var_info,
+                    fmu_instance,
+                    serializer,
+                    &metadata,
+                ),
                 "aerosim::types::FlightControlCommand" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "flight_control_command".to_string();
-                    }
                     pack_raw_aerosim_fmu_msg::<FlightControlCommand>(
                         fmu_id,
                         &var_prefix,
@@ -529,9 +543,6 @@ pub async fn publish_component_output_topics_fmu3(
                     )
                 }
                 "aerosim::types::AircraftEffectorCommand" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "aircraft_effector_command".to_string();
-                    }
                     pack_raw_aerosim_fmu_msg::<AircraftEffectorCommand>(
                         fmu_id,
                         &var_prefix,
@@ -542,9 +553,6 @@ pub async fn publish_component_output_topics_fmu3(
                     )
                 }
                 "aerosim::types::PrimaryFlightDisplayData" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "primary_flight_display_data".to_string();
-                    }
                     pack_raw_aerosim_fmu_msg::<PrimaryFlightDisplayData>(
                         fmu_id,
                         &var_prefix,
@@ -555,9 +563,6 @@ pub async fn publish_component_output_topics_fmu3(
                     )
                 }
                 "aerosim::types::TrajectoryVisualization" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "trajectory_visualization".to_string();
-                    }
                     pack_raw_aerosim_fmu_msg::<TrajectoryVisualization>(
                         fmu_id,
                         &var_prefix,
@@ -567,45 +572,30 @@ pub async fn publish_component_output_topics_fmu3(
                         &metadata,
                     )
                 }
-                "aerosim::types::GNSS" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "gnss".to_string();
-                    }
-                    pack_raw_aerosim_fmu_msg::<GNSS>(
-                        fmu_id,
-                        &var_prefix,
-                        fmu_model_var_info,
-                        fmu_instance,
-                        serializer,
-                        &metadata,
-                    )
-                }
-                "aerosim::types::ADSB" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "adsb".to_string();
-                    }
-                    pack_raw_aerosim_fmu_msg::<ADSB>(
-                        fmu_id,
-                        &var_prefix,
-                        fmu_model_var_info,
-                        fmu_instance,
-                        serializer,
-                        &metadata,
-                    )
-                }
-                "aerosim::types::IMU" => {
-                    if var_prefix.is_empty() {
-                        var_prefix = "imu".to_string();
-                    }
-                    pack_raw_aerosim_fmu_msg::<IMU>(
-                        fmu_id,
-                        &var_prefix,
-                        fmu_model_var_info,
-                        fmu_instance,
-                        serializer,
-                        &metadata,
-                    )
-                }
+                "aerosim::types::GNSS" => pack_raw_aerosim_fmu_msg::<GNSS>(
+                    fmu_id,
+                    &var_prefix,
+                    fmu_model_var_info,
+                    fmu_instance,
+                    serializer,
+                    &metadata,
+                ),
+                "aerosim::types::ADSB" => pack_raw_aerosim_fmu_msg::<ADSB>(
+                    fmu_id,
+                    &var_prefix,
+                    fmu_model_var_info,
+                    fmu_instance,
+                    serializer,
+                    &metadata,
+                ),
+                "aerosim::types::IMU" => pack_raw_aerosim_fmu_msg::<IMU>(
+                    fmu_id,
+                    &var_prefix,
+                    fmu_model_var_info,
+                    fmu_instance,
+                    serializer,
+                    &metadata,
+                ),
                 _ => {
                     warn!("[{}] Unsupported output topic type: {}", fmu_id, msg_type);
                     continue;
@@ -624,6 +614,44 @@ pub async fn publish_component_output_topics_fmu3(
     }
 }
 
+pub fn pack_raw_aerosim_fmu_msg<T: AerosimMessage + Default>(
+    fmu_id: &str,
+    var_prefix: &str,
+    fmu_model_var_info: &Fmi3ModelVarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS<'_>,
+    serializer: &SerializerEnum,
+    metadata: &Metadata,
+) -> Vec<u8> {
+    // Create a new instance of the aerosim message struct with default values
+    let msg_struct = T::default();
+
+    // Convert the aerosim message struct to a JSON object
+    let mut out_msg_json =
+        serde_json::to_value(&msg_struct).expect("Unable to serialize struct to JSON");
+
+    let out_flat_fields = TypeSupport::get_flat_fields_from_json_object(&out_msg_json, "");
+
+    // Set the fields in the JSON object using the dot notation field names as JSON path pointers.
+    for field_name in &out_flat_fields {
+        let fmu_var_name = var_prefix.to_string() + "." + field_name;
+        let json_var_path = TypeSupport::dot_notation_to_json_path(field_name);
+        set_json_from_fmu3(
+            fmu_id,
+            &fmu_var_name,
+            fmu_model_var_info,
+            fmu_instance,
+            &mut out_msg_json,
+            &json_var_path,
+            true,
+        );
+    }
+
+    // Return the serialized raw aerosim message from the JSON object
+    serializer
+        .from_json::<T>(metadata, out_msg_json)
+        .expect("Unable to serialize struct from JSON")
+}
+
 pub async fn publish_aux_output_topics_fmu3(
     fmu_id: &str,
     fmu_config_json: &serde_json::Value,
@@ -639,13 +667,18 @@ pub async fn publish_aux_output_topics_fmu3(
             .expect("Unable to get 'fmu_aux_output_mapping' as object")
             .iter()
         {
+            // Create a new JSON object to hold the output data
             let mut data_value = serde_json::Value::from(serde_json::Map::new());
 
+            // Set the fields in the JSON object using the direct variable names
+            // from the aux output mapping.
             for (out_topic_var, out_fmu_var) in out_var_map
                 .as_object()
                 .expect("Unable to get 'out_var_map' as object")
                 .iter()
             {
+                // Insert the variable as a key with a null value to be able
+                // to set it using the variable name as a JSON pointer.
                 data_value
                     .as_object_mut()
                     .unwrap()
@@ -655,6 +688,7 @@ pub async fn publish_aux_output_topics_fmu3(
                     .as_str()
                     .expect("FMU variable name should be a string");
 
+                // Set the value from the FMU instance to the JSON object
                 set_json_from_fmu3(
                     fmu_id,
                     out_fmu_var_str,
@@ -662,6 +696,7 @@ pub async fn publish_aux_output_topics_fmu3(
                     fmu_instance,
                     &mut data_value,
                     out_topic_var,
+                    false,
                 );
             }
 
