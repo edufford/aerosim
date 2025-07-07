@@ -7,7 +7,7 @@ from aerosim_core import (
 from aerosim_data import types as aerosim_types
 from aerosim_data import dict_to_namespace
 
-from pythonfmu3 import Fmi3Slave
+from pythonfmu3 import Fmi3Slave, Fmi3StepResult, Fmi3Status
 import math
 
 # Deviation scale factor as 5 nautical miles = 12 degrees and 1852 m / naut mile
@@ -111,7 +111,7 @@ class primary_flight_display_controller_fmu_model(Fmi3Slave):
     def exit_initialization_mode(self):
         pass
 
-    def do_step(self, current_time, step_size) -> bool:
+    def do_step(self, current_time, step_size) -> Fmi3StepResult:
         # Do time step calcs
         self.time = current_time
 
@@ -203,7 +203,7 @@ class primary_flight_display_controller_fmu_model(Fmi3Slave):
             self.primary_flight_display_data.hsi_course_select_heading_deg = 0.0
             self.primary_flight_display_data.hsi_course_deviation_deg = 0.0
 
-        return True
+        return Fmi3StepResult(status=Fmi3Status.ok)
 
     def terminate(self):
         print("Terminating PFD controller model.")

@@ -13,7 +13,7 @@ import numpy as np
 import jsbsim
 from scipy.spatial.transform import Rotation
 
-from pythonfmu3 import Fmi3Slave
+from pythonfmu3 import Fmi3Slave, Fmi3StepResult, Fmi3Status
 
 
 # Note: The class name is used as the FMU file name
@@ -316,7 +316,7 @@ class jsbsim_dynamics_fmu_model(Fmi3Slave):
     def exit_initialization_mode(self):
         pass
 
-    def do_step(self, current_time: float, step_size: float) -> bool:
+    def do_step(self, current_time: float, step_size: float) -> Fmi3StepResult:
         # print(f"do_step. t={current_time:.6f} step_size={step_size:.6f}")
         if self.jsbsim is None:
             print("ERROR: JSBSim not initialized.")
@@ -343,7 +343,7 @@ class jsbsim_dynamics_fmu_model(Fmi3Slave):
         self.set_outputs_to_aerosim()
 
         # print(f"FMU end time = {end_time:.6f}, time={self.time:.6f}")
-        return True
+        return Fmi3StepResult(status=Fmi3Status.ok)
 
     def terminate(self):
         print("Terminating JSBSim dynamics model.")
