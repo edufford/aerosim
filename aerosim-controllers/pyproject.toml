@@ -17,10 +17,6 @@ requires-python = "~= 3.12"  # pythonfmu3 is currently built with Python 3.12 an
 requires = ["maturin>=1.2,<2.0"]
 build-backend = "maturin"
 
-[tool.rye]
-managed = true
-dev-dependencies = []
-
 [tool.maturin]
 python-source = "python"
 module-name = "aerosim_controllers._aerosim_controllers"
