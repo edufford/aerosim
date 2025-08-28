@@ -20,6 +20,8 @@ def get_transport(transport):
         return KafkaMiddleware()
     elif transport == "dds":
         return DDSMiddleware()
+    elif transport == "zenoh":
+        return ZenohMiddleware()
 
 
 class BaseMiddleware(metaclass=Singleton):
@@ -74,3 +76,7 @@ class KafkaMiddleware(BaseMiddleware):
 class DDSMiddleware(BaseMiddleware):
     def __init__(self):
         super().__init__(middleware.DDSMiddleware(), middleware.DDSSerializer())
+
+class ZenohMiddleware(BaseMiddleware):
+    def __init__(self):
+        super().__init__(middleware.ZenohMiddleware(), middleware.ZenohSerializer())

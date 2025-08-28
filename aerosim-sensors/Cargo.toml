@@ -1,7 +1,9 @@
 [package]
 name = "aerosim-sensors"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+description.workspace = true
+authors.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
@@ -9,8 +11,7 @@ name = "aerosim_sensors"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.23.3"
-lazy_static = "1.5.0"
-aerosim-data = { path = "../aerosim-data" }
+aerosim-data = { path = "../aerosim-data", features = ["zenoh"] }
+pyo3.workspace = true
 adsb_deku = "0.7.1"
 hex = "0.4.3"

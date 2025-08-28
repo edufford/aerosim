@@ -16,9 +16,8 @@ requires-python = "~= 3.12"  # pythonfmu3 is currently built with Python 3.12 an
 requires = ["maturin>=1.2,<2.0"]
 build-backend = "maturin"
 
-[tool.rye]
-managed = true
-dev-dependencies = ["fmpy[complete]>=0.3.21"]
+[project.optional-dependencies]
+dev = ["fmpy[complete]>=0.3.21"]
 
 [tool.maturin]
 python-source = "python"

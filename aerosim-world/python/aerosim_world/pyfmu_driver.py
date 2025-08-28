@@ -29,7 +29,7 @@ class PyFmuDriver:
         self._running = True
         self._processing_callback_lock = threading.Lock()
 
-        self.transport = middleware.get_transport(middleware_type)
+        self.transport = middleware.get_transport("zenoh")
         self.serializer = self.transport.get_serializer()
 
         self.transport.subscribe(
@@ -693,7 +693,7 @@ class PyFmuDriver:
 
             # print(
             #     f"{self.fmudriver_name} Received aerosim.clock message with "
-            #     f"t={simtime_sec}"
+            #     f"t={simtime_as_sec:.3f} sec"
             # )
 
             # t1 = time.time()

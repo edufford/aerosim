@@ -19,17 +19,17 @@ Usage:
     aircraft to simulate a potential DAA situation. With the AeroSim App window
     active you can take manual control to avoid a collision by using an Xbox
     controller:
-        
+
         - "B" button activates manual control
 
         In hover mode (low speed):
             - Left stick controls yaw and altitude
-            - Right stick controls forward speed and lateral speed  
-        
+            - Right stick controls forward speed and lateral speed
+
         In forward flight mode (high speed):
             - Left stick controls pitch and yaw
             - Right stick controls forward speed and roll
-        
+
     Ctrl-C breaks the script to stop the simulation.
 """
 
@@ -320,7 +320,7 @@ class DAAScenario:
         setup_mission_waypoints()
 
         # Initialize middleware
-        self.transport = middleware.get_transport("kafka")
+        self.transport = middleware.get_transport("zenoh")
 
         # Subscribe to vehicle state topic
         self.transport.subscribe(

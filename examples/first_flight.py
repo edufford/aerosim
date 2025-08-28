@@ -16,7 +16,7 @@ Usage:
     cd examples
     python first_flight.py
 
-    The airplane will take off under autopilot control, but with the AeroSim App window active you 
+    The airplane will take off under autopilot control, but with the AeroSim App window active you
     can use the keyboard to adjust the autopilot setpoints:
         - "Up arrow" key increases airspeed setpoint (non-zero setpoint sets throttle to 100%)
         - "Down arrow" key decreases airspeed setpoint (zero setpoint sets throttle to 0%)
@@ -142,7 +142,7 @@ class FirstFlight:
     def init(self):
         """Initialize the simulation and middleware"""
         # Initialize middleware
-        self.transport = middleware.get_transport("kafka")
+        self.transport = middleware.get_transport("zenoh")
 
         # Subscribe to vehicle state topic
         self.transport.subscribe(

@@ -1,10 +1,10 @@
 @echo off
 
-@REM Install/sync the Python virtual environment
-rye sync || exit /b %ERRORLEVEL%
+@REM Install/sync only the project dependencies to the Python virtual environment
+uv sync --no-build --no-install-workspace || exit /b %ERRORLEVEL%
 
 @REM Activate the Python virtual environment
 call .venv\Scripts\activate
 
 @REM Build AeroSim with force flag to ensure aerosim-world-link is always rebuilt
-rye run build -f
+uv run --no-project build.py %*
