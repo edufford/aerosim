@@ -51,7 +51,7 @@ impl FmuDriver {
             fmu_id: fmu_id.to_string(),
             working_dir: working_dir.to_string(),
             middleware: MiddlewareRegistry::new()
-                .get("kafka")
+                .get("zenoh")
                 .expect("Couldn't create middleware."),
             runtime: Arc::new(
                 tokio::runtime::Runtime::new().expect("Couldn't create tokio runtime."),

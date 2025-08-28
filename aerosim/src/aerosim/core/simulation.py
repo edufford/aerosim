@@ -87,11 +87,11 @@ class AeroSim:
             print(f"Initializing AeroSim FMU Driver '{fmu_config['id']}'...")
             if fmu_driver_type == "python":
                 self.aerosim_fmudrivers.append(
-                    aerosim_world.PyFmuDriver(fmu_config["id"], sim_config_dir, "kafka")
+                    aerosim_world.PyFmuDriver(fmu_config["id"], sim_config_dir, "zenoh")
                 )
             else:
                 self.aerosim_fmudrivers.append(
-                    aerosim_world.FmuDriver(fmu_config["id"], sim_config_dir, "kafka")
+                    aerosim_world.FmuDriver(fmu_config["id"], sim_config_dir, "zenoh")
                 )
 
         # ----------------------------------------------

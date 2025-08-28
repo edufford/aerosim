@@ -15,7 +15,7 @@ from aerosim_sensors import adsb_functions
 
 
 class PyFmuDriver:
-    def __init__(self, fmu_id: str, working_dir: str = "", middleware_type = "kafka") -> None:
+    def __init__(self, fmu_id: str, working_dir: str = "", middleware_type = "zenoh") -> None:
         self.fmu_id = fmu_id
         self.working_dir = working_dir
         self.unzipped_temp_dir = None
