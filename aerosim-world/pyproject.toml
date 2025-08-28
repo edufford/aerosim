@@ -19,10 +19,6 @@ requires-python = ">= 3.12"
 requires = ["maturin>=1.2,<2.0"]
 build-backend = "maturin"
 
-[tool.rye]
-managed = true
-dev-dependencies = []
-
 [tool.maturin]
 python-source = "python"
 module-name = "aerosim_world._aerosim_world"

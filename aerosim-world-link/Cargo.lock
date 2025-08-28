@@ -77,7 +77,6 @@ dependencies = [
  "lazy_static",
  "log",
  "log4rs",
- "rdkafka",
  "serde",
  "serde_json",
  "tokio",

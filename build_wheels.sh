@@ -17,7 +17,7 @@ if [ "$CI" = true ]; then
     # Avoid apt-get errors by redirecting stderr
     apt-get update &>/dev/null || true
     apt-get install -y zlib1g-dev pkg-config libssl-dev &>/dev/null || true
-    
+
     # Fix directory permissions if running in CI
     echo -e "${YELLOW}Setting permissions for build directories...${NC}"
     mkdir -p target dist
@@ -37,50 +37,9 @@ find . -name "*.sh" -exec chmod +x {} \; 2>/dev/null || echo "Warning: Could not
 # Display working directory for debugging
 echo -e "${YELLOW}Working directory: $(pwd)${NC}"
 
-# Create necessary directories
-mkdir -p aerosim-world-link/lib target dist
-
-# Check for existing build artifacts to determine if we need to rebuild
-NEED_REBUILD=false
-if [ ! -d "dist" ] || [ "$(find dist -name "*.whl" | wc -l)" -eq 0 ]; then
-    echo -e "${YELLOW}No wheel files found in dist directory, need to build${NC}"
-    NEED_REBUILD=true
-fi
-
-# Only build if needed
-if [ "$NEED_REBUILD" = true ]; then
-    # Ensure all build dependencies including maturin are installed via rye
-    # This reads from pyproject.toml [build-system] section
-    echo -e "${YELLOW}Ensuring build dependencies are installed...${NC}"
-    rye sync
-
-    # Activate the virtual environment if not already activated
-    if [[ -z "${VIRTUAL_ENV}" ]]; then
-        echo -e "${YELLOW}Activating virtual environment...${NC}"
-        source .venv/bin/activate || { echo -e "${RED}Failed to activate virtual environment${NC}"; exit 1; }
-    fi
-
-    # Install maturin directly to ensure it's available
-    echo -e "${YELLOW}Ensuring maturin is available...${NC}"
-    rye add maturin>=1.5,\<2.0
-
-    # Print Python and tool versions for debugging
-    echo -e "${YELLOW}Python version: $(python --version)${NC}"
-    echo -e "${YELLOW}Maturin version: $(maturin --version 2>/dev/null || echo "Not installed")${NC}"
-    echo -e "${YELLOW}Rye version: $(rye --version 2>/dev/null || echo "Not installed")${NC}"
-
-    # Build all Rust components using our optimized build script
-    # Note: This already handles aerosim-world-link through build.py
-    echo -e "${YELLOW}Building Rust components with build.py...${NC}"
-    rye run build -v || { echo -e "${RED}Error running build.py${NC}"; exit 1; }
-
-    # Now generate wheels from the existing builds
-    echo -e "${YELLOW}Generating wheels from existing builds...${NC}"
-    # Use --clean to clean the output directory first
-    rye build --wheel --all --clean || { echo -e "${RED}Error generating wheels${NC}"; exit 1; }
-else
-    echo -e "${GREEN}Wheel files already exist, skipping build step${NC}"
-fi
+# Build the wheels
+echo -e "${YELLOW}Building wheels...${NC}"
+uv run --no-project build.py --wheel $*
 
 # Print the contents of the dist directory
 echo -e "${YELLOW}Contents of dist directory:${NC}"

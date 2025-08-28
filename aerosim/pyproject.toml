@@ -1,21 +1,29 @@
 [project]
 name = "aerosim"
-version = "0.0.1"
+version = "0.1.0"
 description = "Main python package for AeroSim"
 authors = [
     { name = "Praveen Palanisamy", email = "4770482+praveen-palanisamy@users.noreply.github.com" },
 ]
-dependencies = []
+dependencies = [
+    "aerosim-controllers>=0.1.0",
+    "aerosim-core>=0.1.0",
+    "aerosim-data>=0.1.0",
+    "aerosim-dynamics-models>=0.1.0",
+    "aerosim-scenarios>=0.1.0",
+    "aerosim-sensors>=0.1.0",
+    "aerosim-world>=0.1.0",
+    "websockets>=11.0.0",
+    "pygame>=2.6.1",
+    "opencv-python>=4.11.0.86",
+    "numpy>=2.2.3",
+]
 readme = "README.md"
 requires-python = ">= 3.12"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.rye]
-managed = true
-dev-dependencies = []
 
 [tool.hatch.metadata]
 allow-direct-references = true
