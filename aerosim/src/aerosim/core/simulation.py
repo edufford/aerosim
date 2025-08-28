@@ -36,7 +36,7 @@ class AeroSim:
         self.websocket_tasks = []
         self.is_sim_started = False
         self.simclock_msg = None
-        self.transport = middleware.get_transport("kafka")
+        self.transport = middleware.get_transport("zenoh")
 
     def run(self, sim_config_file: str, sim_config_dir: str = os.getcwd(), wait_for_sim_start: bool = True) -> None:
         """

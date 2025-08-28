@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 aerosim-core = { path = "../aerosim-core" }
-aerosim-data = { path = "../aerosim-data", features = ["kafka"] }
+aerosim-data = { path = "../aerosim-data", features = ["zenoh"] }
 futures = "0.3.31"
 lazy_static = "1.5.0"
 log = "0.4.25"

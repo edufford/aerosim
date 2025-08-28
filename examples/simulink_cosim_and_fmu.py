@@ -64,22 +64,22 @@ def run_simulation() -> None:
     try:
         # Get the script directory to handle paths correctly
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        
+
         # Set environment variables for JSBSim to find the correct paths
         os.environ["JSBSIM_ROOT_DIR"] = os.path.join(script_dir, "jsbsim_xml")
-        
+
         # --------------------------------------------
         # Set up Kafka
         # --------------------------------------------
-        transport = middleware.get_transport("kafka")
-        
+        transport = middleware.get_transport("zenoh")
+
         # Subscribe to camera images topic
         transport.subscribe_raw(
-            "aerosim::types::CompressedImage", 
-            "aerosim.renderer.responses", 
+            "aerosim::types::CompressedImage",
+            "aerosim.renderer.responses",
             on_camera_data
         )
-        
+
         # Subscribe to flight data topic
         transport.subscribe(
             aerosim_types.PrimaryFlightDisplayData,
@@ -90,7 +90,7 @@ def run_simulation() -> None:
         # Use absolute path for config file
         config_file = os.path.join(script_dir, "config/sim_config_simulink_cosim_and_fmu.json")
         logger.info(f"Starting AeroSim simulation with config: {config_file}")
-        
+
         aerosim = AeroSim()
         aerosim.run(config_file)
 
@@ -104,7 +104,7 @@ def run_simulation() -> None:
             if command_queue:
                 command = command_queue.pop()
                 logger.info(f"Received command from aerosim-app: {command}")
-                
+
             time.sleep(0.1)
 
     except KeyboardInterrupt:

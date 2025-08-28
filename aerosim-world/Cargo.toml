@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 aerosim-core = { path = "../aerosim-core" }
-aerosim-data = { path = "../aerosim-data" }
+aerosim-data = { path = "../aerosim-data", features = ["zenoh"] }
 chrono.workspace = true
 log.workspace = true
 log4rs.workspace = true

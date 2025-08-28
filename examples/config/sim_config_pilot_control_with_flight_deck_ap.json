@@ -321,7 +321,7 @@
         },
         {
             "id": "propeller_effector",
-            "fmu_model_path": "fmu/rotor_effector_fmu_model.fmu",
+            "fmu_model_path": "examples/fmu/rotor_effector_fmu_model.fmu",
             "component_input_topics": [],
             "component_output_topics": [
                 {

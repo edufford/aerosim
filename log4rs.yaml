@@ -8,9 +8,8 @@ appenders:
     encoder:
       pattern: "{d} - {m}{n}"
 root:
-  level: warn
+  level: info
   appenders:
     - stdout
     - simlog
 loggers:
- 

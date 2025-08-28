@@ -11,7 +11,7 @@ name = "aerosim_sensors"
 crate-type = ["cdylib"]
 
 [dependencies]
-aerosim-data = { path = "../aerosim-data" }
+aerosim-data = { path = "../aerosim-data", features = ["zenoh"] }
 pyo3.workspace = true
 adsb_deku = "0.7.1"
 hex = "0.4.3"

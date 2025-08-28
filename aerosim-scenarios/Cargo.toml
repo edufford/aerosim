@@ -11,7 +11,7 @@ name = "aerosim_scenarios"
 crate-type = ["cdylib"]
 
 [dependencies]
-aerosim-data = { path = "../aerosim-data" }
+aerosim-data = { path = "../aerosim-data", features = ["zenoh"] }
 pyo3.workspace = true
 serde.workspace = true
 serde_json.workspace = true
