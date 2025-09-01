@@ -1,6 +1,7 @@
 use super::geometry::{Pose, Vector3};
 use super::sensor::SensorType;
 use super::vehicle::VehicleType;
+
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use schemars::JsonSchema;

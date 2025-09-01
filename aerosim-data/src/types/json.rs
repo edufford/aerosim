@@ -5,7 +5,6 @@ use crate::AerosimMessage;
 
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyCapsule};
 use pythonize::{depythonize, pythonize};
-
 use serde::{Deserialize, Serialize};
 use serde_json;
 

@@ -14,6 +14,7 @@ import aerosim_world
 from aerosim_data import middleware
 from aerosim_data import types as aerosim_types
 
+
 class AeroSim:
     """
     Enhanced AeroSim simulation class.
@@ -38,7 +39,12 @@ class AeroSim:
         self.simclock_msg = None
         self.transport = middleware.get_transport("zenoh")
 
-    def run(self, sim_config_file: str, sim_config_dir: str = os.getcwd(), wait_for_sim_start: bool = True) -> None:
+    def run(
+        self,
+        sim_config_file: str,
+        sim_config_dir: str = os.getcwd(),
+        wait_for_sim_start: bool = True,
+    ) -> None:
         """
         Run the AeroSim simulation.
 
@@ -66,11 +72,27 @@ class AeroSim:
             self.on_sim_clock_step,
         )
 
+        # Initialize FMU drivers based on the configuration
+        if (
+            "fmu_driver_type" in self.sim_config_json
+            and self.sim_config_json["fmu_driver_type"] == "python"
+        ):
+            print("Using Python FMU Driver.")
+            fmu_driver_type = "python"
+        else:
+            print("Using Rust FMU Driver.")
+            fmu_driver_type = "rust"
+
         for fmu_config in self.sim_config_json["fmu_models"]:
             print(f"Initializing AeroSim FMU Driver '{fmu_config['id']}'...")
-            self.aerosim_fmudrivers.append(
-                aerosim_world.FmuDriver(fmu_config["id"], sim_config_dir)
-            )
+            if fmu_driver_type == "python":
+                self.aerosim_fmudrivers.append(
+                    aerosim_world.PyFmuDriver(fmu_config["id"], sim_config_dir, "zenoh")
+                )
+            else:
+                self.aerosim_fmudrivers.append(
+                    aerosim_world.FmuDriver(fmu_config["id"], sim_config_dir, "zenoh")
+                )
 
         # ----------------------------------------------
         # Load AeroSim components
@@ -110,7 +132,12 @@ class AeroSim:
             print(f"Error starting AeroSim Orchestrator: {exc}")
             raise exc
 
-    async def run_with_websockets(self, sim_config_file: str, sim_config_dir: str = os.getcwd(), wait_for_sim_start: bool = True) -> None:
+    async def run_with_websockets(
+        self,
+        sim_config_file: str,
+        sim_config_dir: str = os.getcwd(),
+        wait_for_sim_start: bool = True,
+    ) -> None:
         """
         Run the AeroSim simulation with WebSockets support.
 

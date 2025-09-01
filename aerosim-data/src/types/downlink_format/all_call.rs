@@ -3,6 +3,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::adsb::types::{Capability, ICAOAddress};
+
 #[pyclass(get_all)]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AllCallReply {

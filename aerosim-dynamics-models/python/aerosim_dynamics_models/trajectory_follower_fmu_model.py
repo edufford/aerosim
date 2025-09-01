@@ -5,15 +5,18 @@ from aerosim_data import dict_to_namespace
 
 from typing import Optional
 import json
+import os
 
 import numpy as np
-from pythonfmu3 import Fmi3Slave
+from pythonfmu3 import Fmi3Slave, Fmi3StepResult, Fmi3Status
 
 
 # Note: The class name is used as the FMU file name
 class trajectory_follower_fmu_model(Fmi3Slave):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        self.aerosim_root_path = os.getenv("AEROSIM_ROOT")
 
         self.author = "AeroSim"
         self.description = "Implementation of a trajectory follower model"
@@ -73,7 +76,26 @@ class trajectory_follower_fmu_model(Fmi3Slave):
         )
 
     def enter_initialization_mode(self):
-        with open(self.waypoints_json_path, "r", encoding="utf-8") as file:
+        traj_file_path = self.waypoints_json_path
+        print(f"Checking for waypoints JSON file as an absolute path: {traj_file_path}")
+        if not os.path.isfile(traj_file_path) and self.aerosim_root_path is not None:
+            # If the waypoints JSON file is not found, check if it is relative to the AeroSim root dir
+            traj_file_path = os.path.join(
+                self.aerosim_root_path, self.waypoints_json_path
+            )
+            print(
+                f"Checking for waypoints JSON file relative to AeroSim root dir: {traj_file_path}"
+            )
+        if not os.path.isfile(traj_file_path):
+            # If the waypoints JSON file is still not found, check if it is relative to the working dir
+            working_dir = os.getcwd()
+            traj_file_path = os.path.join(working_dir, self.waypoints_json_path)
+            print(
+                f"Checking for waypoints JSON file relative to working dir: {traj_file_path}"
+            )
+
+        print(f"Loading trajectory waypoints from {traj_file_path}")
+        with open(traj_file_path, "r", encoding="utf-8") as file:
             json_points = json.load(file)
 
         self._set_trajectory_visualization_settings()
@@ -103,7 +125,7 @@ class trajectory_follower_fmu_model(Fmi3Slave):
     def exit_initialization_mode(self):
         pass
 
-    def do_step(self, current_time, step_size) -> bool:
+    def do_step(self, current_time, step_size) -> Fmi3StepResult:
         # Do time step calcs
         self.time = current_time + step_size
 
@@ -113,7 +135,8 @@ class trajectory_follower_fmu_model(Fmi3Slave):
 
         self._update_vehicle_state(latest_state)
         self._update_future_trajectory()
-        return True
+
+        return Fmi3StepResult(status=Fmi3Status.ok)
 
     def terminate(self):
         print("Terminating trajectory controller model.")

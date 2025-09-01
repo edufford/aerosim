@@ -8,7 +8,7 @@ from aerosim_data import dict_to_namespace
 import math
 from scipy.spatial.transform import Rotation
 
-from pythonfmu3 import Fmi3Slave
+from pythonfmu3 import Fmi3Slave, Fmi3StepResult, Fmi3Status
 
 
 # Note: The class name is used as the FMU file name
@@ -73,7 +73,7 @@ class rotor_effector_fmu_model(Fmi3Slave):
     def exit_initialization_mode(self):
         pass
 
-    def do_step(self, current_time: float, step_size: float) -> bool:
+    def do_step(self, current_time: float, step_size: float) -> Fmi3StepResult:
         # Do time step calcs
         dt_s = (current_time + step_size) - self.time
         self.time = current_time + step_size
@@ -123,7 +123,7 @@ class rotor_effector_fmu_model(Fmi3Slave):
         self.effector_state.pose.orientation.y = q_y
         self.effector_state.pose.orientation.z = q_z
 
-        return True
+        return Fmi3StepResult(status=Fmi3Status.ok)
 
     def terminate(self):
         print("Terminating rotor effector model")

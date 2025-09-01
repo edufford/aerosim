@@ -1,19 +1,31 @@
-use crate::AerosimMessage;
 use crate::types::PyTypeSupport;
+use crate::AerosimMessage;
 
 use chrono::{DateTime, Utc};
-use pyo3::{
-    prelude::*,
-    types::{PyDict, PyCapsule}
-};
-use schemars::JsonSchema;
-
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+use pyo3::{
+    prelude::*,
+    types::{PyCapsule, PyDict},
+};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 #[pyclass(get_all)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, JsonSchema)]
-#[derive(aerosim_macros::AerosimMessage)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    JsonSchema,
+    aerosim_macros::AerosimMessage,
+)]
 pub struct TimeStamp {
     pub sec: i32,
     pub nanosec: u32,
