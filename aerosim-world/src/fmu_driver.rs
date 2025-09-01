@@ -1,6 +1,6 @@
-use ::log::{info, warn};
+use ::log::{error, info, warn};
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{
     mpsc::{self, Receiver, Sender, TryRecvError},
     Arc, Mutex,
@@ -11,14 +11,11 @@ use pyo3::prelude::*;
 use serde_json::Value;
 
 use fmi::fmi2::import::Fmi2Import;
-use fmi::fmi3::import::Fmi3Import;
-use fmi::fmi3::instance::CoSimulation;
-use fmi::schema::{
-    fmi3::{ArrayableVariableTrait, VariableType},
-    traits::FmiModelDescription,
-};
-use fmi::traits::{FmiImport, FmiInstance};
+use fmi::fmi3::{instance::CoSimulation, schema::Causality};
+use fmi::schema::traits::FmiModelDescription;
+use fmi::traits::FmiInstance;
 
+use aerosim_core::math::round_to_decimal_places;
 use aerosim_data::{
     middleware::{
         CallbackClosureRaw, Metadata, Middleware, MiddlewareEnum, MiddlewareRaw,
@@ -28,9 +25,12 @@ use aerosim_data::{
 };
 
 use crate::fmu_utils::{
-    fmi3_var_type_to_string, publish_aux_output_topics_fmu3, publish_component_output_topics_fmu3,
-    set_fmu3_from_json, set_init_value_fmu3,
+    publish_aux_output_topics_fmu3, publish_component_output_topics_fmu3, set_fmu3_from_json,
+    set_init_value_fmu3, Fmi3Model, Fmi3ModelVarInfo, Fmi3VarInfo, NUM_TIME_DECIMALS, TIME_SEC_TOL,
 };
+
+// ----------------------------------------------------------------------------
+// FmuDriver struct
 
 #[pyclass]
 pub struct FmuDriver {
@@ -43,15 +43,28 @@ pub struct FmuDriver {
     fmu_driver_thread_tx_stop: Option<Sender<bool>>,
 }
 
+// FmuDriver interface functions that are exposed as Python class methods
 #[pymethods]
 impl FmuDriver {
     #[new]
-    fn __new__(fmu_id: &str, working_dir: &str, _middleware_type: &str) -> Self {
+    fn __new__(fmu_id: &str, working_dir: &str, middleware_type: &str) -> Self {
+        let middleware_type_mod = match middleware_type {
+            "kafka" => "kafka",
+            "zenoh" => "zenoh",
+            _ => {
+                warn!(
+                    "Unsupported middleware type '{}', defaulting to 'zenoh'",
+                    middleware_type
+                );
+                "zenoh"
+            }
+        };
+
         let mut fmu_driver = FmuDriver {
             fmu_id: fmu_id.to_string(),
             working_dir: working_dir.to_string(),
             middleware: MiddlewareRegistry::new()
-                .get("zenoh")
+                .get(middleware_type_mod)
                 .expect("Couldn't create middleware."),
             runtime: Arc::new(
                 tokio::runtime::Runtime::new().expect("Couldn't create tokio runtime."),
@@ -64,7 +77,6 @@ impl FmuDriver {
         let runtime = Arc::clone(&fmu_driver.runtime);
 
         // Channels to send received message data from subscriber to FMU Driver thread for processing
-        let (tx_clock_msg, rx_clock_msg) = mpsc::channel::<(JsonData, Metadata)>();
         let (tx_orchestrator_msg, rx_orchestrator_msg) = mpsc::channel::<(JsonData, Metadata)>();
 
         // Subscribe to orchestrator commands topic
@@ -72,7 +84,7 @@ impl FmuDriver {
             match middleware
                 .subscribe::<JsonData>("aerosim.orchestrator.commands", {
                     Box::new(move |data, metadata| {
-                        FmuDriver::handle_orchestrator_command_message(
+                        FmuDriver::receive_orchestrator_command_message(
                             data,
                             metadata,
                             &tx_orchestrator_msg,
@@ -92,25 +104,6 @@ impl FmuDriver {
             }
         });
 
-        // Subscribe to clock topic
-        runtime.block_on(async {
-            match middleware
-                .subscribe::<JsonData>("aerosim.clock", {
-                    let fmu_id = fmu_driver.fmu_id.clone();
-                    Box::new(move |data, metadata| {
-                        FmuDriver::handle_clock_message(data, metadata, &tx_clock_msg, &fmu_id);
-                        Ok(())
-                    })
-                })
-                .await
-            {
-                Ok(()) => {
-                    info!("Created aerosim.clock subscriber.")
-                }
-                Err(e) => warn!("Could not create aerosim.clock subscriber: {}", e),
-            }
-        });
-
         let (tx_stop, rx_stop): (Sender<bool>, Receiver<bool>) = mpsc::channel();
         fmu_driver.fmu_driver_thread_tx_stop = Some(tx_stop);
 
@@ -123,7 +116,6 @@ impl FmuDriver {
                 .spawn(move || {
                     runtime.block_on(FmuDriver::fmu_driver_main(
                         rx_stop,
-                        rx_clock_msg,
                         rx_orchestrator_msg,
                         middleware.clone(),
                         &fmu_id,
@@ -168,282 +160,11 @@ impl FmuDriver {
     }
 }
 
-pub struct Fmi3VarInfo {
-    pub fmu_var_ref: u32,
-    pub fmu_var_type: VariableType,
-    pub fmu_var_causality: fmi::fmi3::schema::Causality,
-    pub fmu_var_dim: Vec<u64>,
-    pub fmu_var_tot_dim: usize,
-}
-
-pub struct Fmi3ModelVarInfo {
-    pub fmu_var_info: HashMap<String, Fmi3VarInfo>,
-}
-
-impl Fmi3ModelVarInfo {
-    pub fn new(fmu_id: &str, fmi3_model: &Fmi3Model) -> Self {
-        let mut fmu_var_info: HashMap<String, Fmi3VarInfo> = HashMap::new();
-        let fmu_model_desc = fmi3_model.get_fmu_instance_ref().model_description();
-
-        // Collect all of the variable value references
-        let all_fmu_var_iter = itertools::chain!(
-            fmu_model_desc
-                .model_variables
-                .float64
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .float32
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .int64
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .int32
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .int16
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .int8
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .uint64
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .uint32
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .uint16
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .uint8
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .boolean
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .string
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-        );
-
-        for fmu_var in all_fmu_var_iter {
-            let fmu_var_ref = fmu_var.value_reference();
-            let fmu_var_name = fmu_var.name();
-            let fmu_var_type = fmu_var.data_type();
-            let fmu_var_causality = fmu_var.causality();
-            let fmu_var_dim: Vec<u64> = fmu_var
-                .dimensions()
-                .iter()
-                .map(|d| {
-                    d.start
-                        .expect("Error: Only dimensions using 'start' value are supported.")
-                        as u64
-                })
-                .collect();
-            let fmu_var_tot_dim: usize = fmu_var_dim
-                .iter()
-                .product::<u64>()
-                .try_into()
-                .expect("Unable to convert total dimension to usize");
-
-            info!(
-                "[{}] FMU ref={} var='{}', type={}, dim={:?}, causality={:?}",
-                fmu_id,
-                fmu_var_ref,
-                fmu_var_name,
-                fmi3_var_type_to_string(&fmu_var_type),
-                fmu_var_dim,
-                fmu_var_causality
-            );
-
-            fmu_var_info.insert(
-                fmu_var_name.to_string(),
-                Fmi3VarInfo {
-                    fmu_var_ref,
-                    fmu_var_type,
-                    fmu_var_causality,
-                    fmu_var_dim,
-                    fmu_var_tot_dim,
-                },
-            );
-        }
-
-        Self { fmu_var_info }
-    }
-
-    pub fn get_fmu_var_info(&self, var_name: &str) -> Option<&Fmi3VarInfo> {
-        self.fmu_var_info.get(var_name)
-    }
-}
-
-pub struct Fmi3Model {
-    #[allow(unused)]
-    fmu_import: Box<Fmi3Import>,
-    fmu_instance: fmi::fmi3::instance::InstanceCS<'static>,
-}
-
-impl Fmi3Model {
-    pub fn new(fmu_filename: PathBuf) -> Self {
-        // Allocate the import on the heap and leak it to get a 'static reference.
-        let fmu_import_box: Box<Fmi3Import> =
-            Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
-        let fmu_import_static: &'static Fmi3Import = Box::leak(fmu_import_box);
-
-        let fmu_instance = fmu_import_static
-            .instantiate_cs("instance1", false, true, false, false, &[])
-            .expect("Unable to instantiate FMU instance.");
-
-        // Rebuild the Box to deallocate it later.
-        let fmu_import =
-            unsafe { Box::from_raw(fmu_import_static as *const Fmi3Import as *mut Fmi3Import) };
-
-        let fmu_model_desc = fmu_import.model_description();
-
-        info!(
-            "Loaded FMU model name: {}, FMI ver: {}",
-            fmu_model_desc.model_name, fmu_model_desc.fmi_version
-        );
-
-        Self {
-            fmu_import,
-            fmu_instance,
-        }
-    }
-
-    pub fn get_fmu_instance_ref(&self) -> &fmi::fmi3::instance::InstanceCS<'static> {
-        &self.fmu_instance
-    }
-
-    pub fn get_fmu_instance_mut(&mut self) -> &mut fmi::fmi3::instance::InstanceCS<'static> {
-        &mut self.fmu_instance
-    }
-}
-
-// pub struct FmiModel<'a> {
-//     fmu_import: Box<Fmi3Import>,
-//     fmu_instance: fmi::fmi3::instance::InstanceCS<'a>,
-// }
-
-// impl<'a> FmiModel<'a> {
-//     pub fn new(fmu_filename: PathBuf) -> Self {
-//         // Allocate the import on the heap.
-//         let fmu_import: Box<Fmi3Import> =
-//             Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
-
-//         // Manually extend the lifetime of the reference to match 'a through a raw pointer.
-//         let fmu_import_ref: &'a Fmi3Import =
-//             unsafe { &*(fmu_import.as_ref() as *const Fmi3Import) };
-
-//         let fmu_instance = fmu_import_ref
-//             .instantiate_cs("instance1", false, true, false, false, &[])
-//             .expect("Unable to instantiate FMU instance.");
-
-//         Self {
-//             fmu_import,
-//             fmu_instance,
-//         }
-//     }
-// }
-
-// #[self_referencing]
-// pub struct FmiModel {
-//     fmu_import: Rc<Fmi3Import>,
-//     #[covariant]
-//     #[borrows(fmu_import)]
-//     fmu_instance: fmi::fmi3::instance::InstanceCS<'this>,
-// }
-
-// pub enum FmiImportEnum {
-//     Fmi2Import(Fmi2Import),
-//     Fmi3Import(Fmi3Import),
-// }
-
-// pub enum FmiInstanceEnum<'a> {
-//     Fmi2Instance(fmi::fmi2::instance::InstanceCS<'a>),
-//     Fmi3Instance(fmi::fmi3::instance::InstanceCS<'a>),
-// }
-
-// pub enum ModelDescriptionEnum<'a> {
-//     Fmi2ModelDescription(&'a fmi::fmi2::schema::Fmi2ModelDescription),
-//     Fmi3ModelDescription(&'a fmi::fmi3::schema::Fmi3ModelDescription),
-// }
-
-pub fn round_microsec(sec: f64) -> f64 {
-    (sec * 1e6_f64).round() / 1e6_f64
-}
-
-fn input_data_callback(
-    fmu_id_str: String,
-    serializer: SerializerEnum,
-    input_data_map: Arc<Mutex<HashMap<String, (Metadata, Value)>>>,
-) -> CallbackClosureRaw {
-    Box::new(move |payload: &[u8]| {
-        // Deserialize metadata from the incoming payload and determine the simulation timestamp.
-        // If the simulation timestamp is not valid, compute it based on the real-time platform timestamp.
-        let metadata = serializer
-            .deserialize_metadata(payload)
-            .ok_or(format!("Could not deserialize metadata from payload"))?;
-
-        let mut input_data_map_lock = input_data_map.lock().unwrap();
-
-        // Check if the topic already has data and if the received data is
-        // older than the existing data
-        if let Some((existing_metadata, _existing_data)) = input_data_map_lock.get(&metadata.topic)
-        {
-            if metadata.is_sim_time_valid()
-                && existing_metadata.is_sim_time_valid()
-                && metadata.timestamp_sim < existing_metadata.timestamp_sim
-            {
-                info!(
-                    "[{}] Ignoring older data for topic: {}",
-                    fmu_id_str, metadata.topic
-                );
-                return Ok(());
-            }
-        }
-
-        // Deserialize the payload into a JSON value and store it in the input data map
-        if let Some(msg_json) = deserialize_to_json(&metadata.type_name, &serializer, payload) {
-            input_data_map_lock.insert(metadata.topic.clone(), (metadata, msg_json));
-        } else {
-            warn!(
-                "[{}] Failed to deserialize payload for topic: {}",
-                fmu_id_str, metadata.topic
-            );
-        }
-
-        Ok(())
-    })
-}
-
 // Rust-only FmuDriverRust functions
 impl FmuDriver {
+    // Function for the FMU driver's main thread loop
     async fn fmu_driver_main(
         rx_stop: Receiver<bool>,
-        rx_clock_msg: Receiver<(JsonData, Metadata)>,
         rx_orchestrator_msg: Receiver<(JsonData, Metadata)>,
         middleware: Arc<MiddlewareEnum>,
         fmu_id: &str,
@@ -452,14 +173,13 @@ impl FmuDriver {
         info!("[{}] FMU Driver main thread started.", fmu_id);
 
         let mut running = true;
+        let mut is_sim_config_loaded = false;
+        let mut is_sim_started = false;
 
         let serializer = middleware.get_serializer();
 
         let mut fmu_config_json: Value = serde_json::Value::Null;
-
         let mut all_topics_to_subscribe: HashSet<(String, String)> = HashSet::new();
-        let mut aux_topics_to_subscribe: HashSet<String> = HashSet::new();
-        let mut aux_topics_to_publish: HashSet<String> = HashSet::new();
 
         let mut fmu_model: Option<Fmi3Model> = None;
         let mut fmu_model_var_info: Option<Fmi3ModelVarInfo> = None;
@@ -468,346 +188,32 @@ impl FmuDriver {
         let input_data_map: Arc<Mutex<HashMap<String, (Metadata, Value)>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
+        // Channel to send received step trigger message data to this thread for processing
+        let (tx_step_msg, rx_step_msg) = mpsc::channel::<Metadata>();
+
         while running {
             // Check for a received orchestrator command message to process
             match rx_orchestrator_msg.try_recv() {
                 Ok((payload, metadata)) => {
-                    let msg_json = payload.get_data().expect("Unable to get JsonData payload.");
-                    let command = msg_json
-                        .get("command")
-                        .expect("Unable to get 'command' field from JSON.")
-                        .as_str()
-                        .expect("Unable to get 'command' as string.");
-
-                    info!(
-                        "[{}] FMU Driver thread processing topic: {} command {}",
-                        fmu_id, metadata.topic, command
-                    );
-
-                    match command {
-                        "stop" => {
-                            running = false;
-                        }
-
-                        "load_config" => {
-                            info!("[{}] Received orchestrator load command.", fmu_id);
-
-                            // ----------------------------------------------------------------
-                            // Load the FMU config into fmu_config_json
-
-                            let sim_config = msg_json
-                                .pointer("/parameters/sim_config")
-                                .expect(
-                                    "Unable to get ['parameters']['sim_config'] field from JSON",
-                                )
-                                .clone();
-
-                            for fmu_config in sim_config
-                                .get("fmu_models")
-                                .expect("Unable to get 'fmu_models' field from JSON")
-                                .as_array()
-                                .expect("Unable to get 'fmu_models' as array")
-                            {
-                                if fmu_config
-                                    .get("id")
-                                    .expect("Unable to get 'id' field from JSON")
-                                    .as_str()
-                                    .expect("Unable to get 'id' as string")
-                                    == fmu_id
-                                {
-                                    fmu_config_json = fmu_config.clone();
-                                    break;
-                                }
-                            }
-
-                            if fmu_config_json.is_null() {
-                                warn!("[{}] FMU ID not found in sim config.", fmu_id);
-                            }
-
-                            // info!("[{}] Received fmu_config: {:?}", fmu_id, fmu_config_json);
-
-                            // ----------------------------------------------------------------
-                            // Process fmu_config_json
-
-                            // TODO Refactor this block into load_config()
-                            {
-                                if let Some(in_topics) =
-                                    fmu_config_json.get("component_input_topics")
-                                {
-                                    for in_topic_info in in_topics
-                                        .as_array()
-                                        .expect("Unable to get 'component_input_topics' as array")
-                                    {
-                                        let in_topic = in_topic_info
-                                            .get("topic")
-                                            .expect("Unable to get 'topic' field from JSON")
-                                            .as_str()
-                                            .expect("Unable to get 'topic' as string");
-                                        let msg_type = in_topic_info
-                                            .get("msg_type")
-                                            .expect("Unable to get 'msg_type' field from JSON")
-                                            .as_str()
-                                            .expect("Unable to get 'msg_type' as string");
-                                        all_topics_to_subscribe
-                                            .insert((msg_type.to_string(), in_topic.to_string()));
-                                        // self.in_topic_data[in_topic] = {}
-                                    }
-                                }
-
-                                if let Some(aux_in_mapping) =
-                                    fmu_config_json.get("fmu_aux_input_mapping")
-                                {
-                                    for (in_topic_root, _) in aux_in_mapping
-                                        .as_object()
-                                        .expect("Unable to get 'fmu_aux_input_mapping' as object")
-                                    {
-                                        all_topics_to_subscribe.insert((
-                                            "aerosim::types::JsonData".to_string(),
-                                            in_topic_root.to_string(),
-                                        ));
-                                        aux_topics_to_subscribe.insert(in_topic_root.to_string());
-                                        // self.in_topic_data[in_topic_root] = {}
-                                    }
-                                }
-
-                                if let Some(aux_out_mapping) =
-                                    fmu_config_json.get("fmu_aux_output_mapping")
-                                {
-                                    for (out_topic_root, _) in aux_out_mapping
-                                        .as_object()
-                                        .expect("Unable to get 'fmu_aux_output_mapping' as object")
-                                    {
-                                        aux_topics_to_publish.insert(out_topic_root.to_string());
-                                        // self.out_topic_data[out_topic_root] = {}
-                                    }
-                                }
-                            }
-
-                            // ----------------------------------------------------------------
-                            // Subscribe to all of the topics specified in the sim config
-
-                            let all_topic_to_subscribe: Vec<(String, String)> =
-                                all_topics_to_subscribe.clone().into_iter().collect();
-
-                            info!(
-                                "[{}] Subscribing to topics: {:?}",
-                                fmu_id, all_topic_to_subscribe
-                            );
-
-                            let _ = middleware
-                                .subscribe_all_raw(
-                                    all_topic_to_subscribe,
-                                    input_data_callback(
-                                        fmu_id.to_string(),
-                                        middleware.get_serializer(),
-                                        Arc::clone(&input_data_map),
-                                    ),
-                                )
-                                .await;
-
-                            // ----------------------------------------------------------------
-                            // Load the FMU model file
-
-                            // TODO Refactor this block into load_fmu()
-                            {
-                                // ------------------------------------------------------------
-                                // FMU model file path processing
-
-                                let fmu_model_path = fmu_config_json
-                                    .get("fmu_model_path")
-                                    .expect("Unable to get 'fmu_model_path' field from JSON")
-                                    .as_str()
-                                    .expect("Unable to get 'fmu_model_path' as string");
-                                let mut fmu_model_path_buf =
-                                    Path::new(fmu_model_path).to_path_buf();
-
-                                // Check if file exists at fmu_model_path
-                                if !fmu_model_path_buf.exists() {
-                                    // If the FMU model path is not found, check if it is relative to
-                                    // the AeroSim root dir
-                                    let aerosim_root = match std::env::var("AEROSIM_ROOT") {
-                                        Ok(root_path) => root_path,
-                                        Err(_) => "".to_string(),
-                                    };
-
-                                    fmu_model_path_buf =
-                                        Path::new(&aerosim_root).join(fmu_model_path);
-                                }
-
-                                if !fmu_model_path_buf.exists() {
-                                    // If the FMU model path is still not found, check if it is relative to
-                                    // the working directory
-                                    fmu_model_path_buf =
-                                        Path::new(&working_dir).join(fmu_model_path);
-                                }
-
-                                let fmu_filename = fmu_model_path_buf
-                                    .canonicalize()
-                                    .expect("Unable to canonicalize fmu_model_path");
-
-                                info!("[{}] Loading FMU file: {:?}", fmu_id, fmu_filename);
-
-                                // Peek the model description to check the FMI version
-                                let min_model_desc = fmi::import::peek_descr_path(&fmu_filename)
-                                    .expect("Unable to peek model description.");
-
-                                if min_model_desc.version_string() == "2.0" {
-                                    // ------------------------------------------------------------
-                                    // FMI 2.0 model processing
-
-                                    let _fmu_import: Fmi2Import =
-                                        fmi::import::from_path(&fmu_filename)
-                                            .expect("Unable to import FMU file.");
-
-                                    // TODO implement FMI2 model processing
-                                } else if min_model_desc.version_string() == "3.0" {
-                                    // ------------------------------------------------------------
-                                    // FMI 3.0 model processing
-
-                                    // Load the FMU instance
-                                    fmu_model = Some(Fmi3Model::new(fmu_filename));
-                                    fmu_model_var_info = Some(Fmi3ModelVarInfo::new(
-                                        fmu_id,
-                                        fmu_model.as_ref().unwrap(),
-                                    ));
-                                }
-                            }
-
-                            // ----------------------------------------------------------------
-                            // After loading FMU model file to populate fmu_var_refs, pass
-                            // through the world origin values as initial values if the FMU has
-                            // variables for it
-
-                            if let Some(fmu_var_info_ref) = fmu_model_var_info.as_ref() {
-                                if fmu_var_info_ref
-                                    .get_fmu_var_info("world_origin_latitude")
-                                    .is_some()
-                                    && fmu_var_info_ref
-                                        .get_fmu_var_info("world_origin_longitude")
-                                        .is_some()
-                                    && fmu_var_info_ref
-                                        .get_fmu_var_info("world_origin_altitude")
-                                        .is_some()
-                                {
-                                    fmu_config_json["fmu_initial_vals"]["world_origin_latitude"] =
-                                        sim_config["world"]["origin"]["latitude"].clone();
-                                    fmu_config_json["fmu_initial_vals"]["world_origin_longitude"] =
-                                        sim_config["world"]["origin"]["longitude"].clone();
-                                    fmu_config_json["fmu_initial_vals"]["world_origin_altitude"] =
-                                        sim_config["world"]["origin"]["altitude"].clone();
-                                }
-                            }
-
-                            // self._is_sim_config_loaded = True
-
-                            info!("[{}] Done loading sim config.", fmu_id);
-                        }
-
-                        "start" => {
-                            info!("[{}] Received orchestrator start command.", fmu_id);
-                            {
-                                // # Save sim start time from the orchestrator (not used anywhere yet)
-                                let sim_start_time_sec = msg_json
-                                .pointer("/parameters/sim_start_time/sec")
-                                .expect(
-                                    "Unable to get ['parameters']['sim_start_time']['sec'] field from JSON",
-                                ).as_i64().expect("Unable to get 'sec' as i64");
-                                let sim_start_time_nanosec = msg_json
-                                .pointer("/parameters/sim_start_time/nanosec")
-                                .expect(
-                                    "Unable to get ['parameters']['sim_start_time']['nanosec'] field from JSON",
-                                ).as_u64().expect("Unable to get 'nanosec' as u64");
-                                let sim_start_time = TimeStamp::new(
-                                    sim_start_time_sec as i32,
-                                    sim_start_time_nanosec as u32,
-                                );
-                                info!("[{}] Sim start time: {:?}", fmu_id, sim_start_time);
-                            }
-
-                            let initial_timestamp = metadata.timestamp_sim;
-
-                            // Initialize the FMU model instance to be ready to start stepping
-                            {
-                                // self.init_fmu()
-                                if let (Some(fmu_model_mut), Some(fmu_model_var_info_ref)) =
-                                    (fmu_model.as_mut(), fmu_model_var_info.as_ref())
-                                {
-                                    let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
-
-                                    // Set initial values for FMU variables set in the "fmu_initial_vals" config
-                                    if let Some(fmu_init_vals_json) =
-                                        fmu_config_json.get("fmu_initial_vals")
-                                    {
-                                        let fmu_init_vals_obj =
-                                            fmu_init_vals_json.as_object().expect(
-                                                "Unable to get 'fmu_initial_vals' as a JSON object",
-                                            );
-                                        for (init_var, init_value) in fmu_init_vals_obj {
-                                            if let Some(fmu_var_info) =
-                                                fmu_model_var_info_ref.get_fmu_var_info(init_var)
-                                            {
-                                                set_init_value_fmu3(
-                                                    fmu_id,
-                                                    init_var,
-                                                    init_value,
-                                                    fmu_var_info,
-                                                    fmu_instance,
-                                                );
-                                            } else {
-                                                warn!(
-                                                    "[{}] FMU variable '{}' not found in model info.",
-                                                    fmu_id, init_var
-                                                );
-                                            }
-                                        }
-                                    }
-
-                                    // Call FMU API to execute its 'enter initialization mode' function
-                                    // to process the initial values set above
-                                    FmiInstance::enter_initialization_mode(
-                                        fmu_instance,
-                                        None,
-                                        fmu_time,
-                                        None,
-                                    );
-
-                                    // Call FMU API to execute its 'exit initialization mode' function
-                                    // to be ready to start stepping
-                                    FmiInstance::exit_initialization_mode(fmu_instance);
-
-                                    // Publish initial value output topics for initial timestamp
-                                    publish_component_output_topics_fmu3(
-                                        fmu_id,
-                                        &fmu_config_json,
-                                        fmu_model_var_info_ref,
-                                        fmu_instance,
-                                        initial_timestamp,
-                                        &middleware,
-                                        &serializer,
-                                    )
-                                    .await;
-
-                                    publish_aux_output_topics_fmu3(
-                                        fmu_id,
-                                        &fmu_config_json,
-                                        fmu_model_var_info_ref,
-                                        fmu_instance,
-                                        initial_timestamp,
-                                        &middleware,
-                                    )
-                                    .await;
-                                }
-                            }
-
-                            // self._is_sim_started = True
-                        }
-
-                        "load_scene_graph" => { /* No-op for FMU driver */ }
-
-                        &_ => {
-                            warn!("Unknown orchestrator command: {}", command);
-                        }
-                    };
+                    FmuDriver::process_orchestrator_command_message(
+                        fmu_id,
+                        working_dir,
+                        &middleware,
+                        &serializer,
+                        &payload,
+                        &metadata,
+                        &tx_step_msg,
+                        &mut running,
+                        &mut is_sim_config_loaded,
+                        &mut is_sim_started,
+                        &mut fmu_config_json,
+                        &mut all_topics_to_subscribe,
+                        &mut fmu_time,
+                        &mut fmu_model,
+                        &mut fmu_model_var_info,
+                        &input_data_map,
+                    )
+                    .await;
                 }
                 Err(TryRecvError::Disconnected) => {
                     running = false;
@@ -815,144 +221,28 @@ impl FmuDriver {
                 Err(TryRecvError::Empty) => { /* pass to continue looping */ }
             }
 
-            // Check for a received clock message to process
-            match rx_clock_msg.try_recv() {
-                Ok((payload, _metadata)) => {
-                    let msg_json = payload.get_data().expect("Unable to get JsonData payload.");
-                    let timestamp_sim = TimeStamp::new(
-                        msg_json["timestamp_sim"]["sec"].as_i64().unwrap() as i32,
-                        msg_json["timestamp_sim"]["nanosec"].as_u64().unwrap() as u32,
-                    );
-
-                    info!(
-                        "[{}] FMU Driver thread processing clock step: {:?}",
-                        fmu_id, timestamp_sim
-                    );
-
-                    // ------------------------------------------------------------------------
-                    // Step the FMU model instance
-
-                    {
-                        // self.step_fmu(simtime_as_sec)
-                        if let (Some(fmu_model_mut), Some(fmu_model_var_info_ref)) =
-                            (fmu_model.as_mut(), fmu_model_var_info.as_ref())
-                        {
-                            let simtime_sec = round_microsec(timestamp_sim.to_sec());
-                            let cur_step_sec = simtime_sec - fmu_time;
-                            if cur_step_sec < 0.0 {
-                                warn!(
-                                    "[{}] Negative time step for simtime_sec='{}' fmu_time='{}'",
-                                    fmu_id, simtime_sec, fmu_time
-                                );
-                            } else {
-                                let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
-
-                                // ------------------------------------------------------------
-                                // Write inputs to the FMU
-
-                                // Process every input topic that has been received and stored in input_data_map
-                                {
-                                    let mut input_data_map_lock = input_data_map.lock().unwrap();
-                                    let cur_input_data = input_data_map_lock.drain();
-
-                                    for (input_topic, (in_msg_metadata, in_msg_json)) in
-                                        cur_input_data
-                                    {
-                                        // info!(
-                                        //     "[{}] Writing input topic '{}' at timestamp: {:?}",
-                                        //     fmu_id, input_topic, in_msg_metadata.timestamp_sim
-                                        // );
-
-                                        let in_msg_flat_fields =
-                                            TypeSupport::get_flat_fields_from_json_object(
-                                                &in_msg_json,
-                                                "",
-                                            );
-
-                                        let aux_in_var_map = fmu_config_json
-                                            .get("fmu_aux_input_mapping")
-                                            .and_then(|aux_in_mapping| {
-                                                aux_in_mapping.get(&input_topic)
-                                            })
-                                            .and_then(|aux_in_mapping| aux_in_mapping.as_object());
-
-                                        // Iterate through the flat fields and set the FMU variables
-                                        for in_msg_var in in_msg_flat_fields {
-                                            set_fmu3_from_json(
-                                                &in_msg_var,
-                                                &in_msg_json,
-                                                &in_msg_metadata,
-                                                aux_in_var_map,
-                                                fmu_id,
-                                                fmu_model_var_info_ref,
-                                                fmu_instance,
-                                            );
-                                        }
-                                    }
-                                }
-
-                                // ------------------------------------------------------------
-                                // Do one step of the FMU
-
-                                let no_set_fmu_state_prior_to_current_point = false;
-
-                                let mut event_handling_needed = false;
-                                let mut terminate_simulation = false;
-                                let mut early_return = false;
-                                let mut last_successful_time: f64 = 0.0;
-
-                                fmu_instance.do_step(
-                                    fmu_time,
-                                    cur_step_sec,
-                                    no_set_fmu_state_prior_to_current_point,
-                                    &mut event_handling_needed,
-                                    &mut terminate_simulation,
-                                    &mut early_return,
-                                    &mut last_successful_time,
-                                );
-
-                                // Advance the time
-                                fmu_time = round_microsec(last_successful_time);
-
-                                info!("[{}] FMU step done, fmu_time: {}", fmu_id, fmu_time);
-                            }
-                        }
-                    }
-
-                    // ------------------------------------------------------------------------
-                    // Publish output data for the current timestamp
-
-                    if let (Some(fmu_model_mut), Some(fmu_model_var_info_ref)) =
-                        (fmu_model.as_mut(), fmu_model_var_info.as_ref())
-                    {
-                        let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
-
-                        publish_component_output_topics_fmu3(
+            // Check for a received step trigger message to process
+            if running && is_sim_started {
+                match rx_step_msg.try_recv() {
+                    Ok(metadata) => {
+                        FmuDriver::process_step_trigger_message(
                             fmu_id,
                             &fmu_config_json,
-                            fmu_model_var_info_ref,
-                            fmu_instance,
-                            timestamp_sim,
                             &middleware,
                             &serializer,
-                        )
-                        .await;
-
-                        publish_aux_output_topics_fmu3(
-                            fmu_id,
-                            &fmu_config_json,
-                            fmu_model_var_info_ref,
-                            fmu_instance,
-                            timestamp_sim,
-                            &middleware,
+                            &metadata,
+                            &mut fmu_time,
+                            &mut fmu_model,
+                            &mut fmu_model_var_info,
+                            &input_data_map,
                         )
                         .await;
                     }
+                    Err(TryRecvError::Disconnected) => {
+                        running = false;
+                    }
+                    Err(TryRecvError::Empty) => { /* pass to continue looping */ }
                 }
-                Err(TryRecvError::Disconnected) => {
-                    running = false;
-                }
-                Err(TryRecvError::Empty) => { /* pass to continue looping */ }
             }
 
             // Check for stop flag to shutdown the thread
@@ -967,228 +257,687 @@ impl FmuDriver {
                 }
                 Err(TryRecvError::Empty) => { /* pass to continue looping */ }
             }
+
+            tokio::task::yield_now().await;
         }
 
-        tokio::task::yield_now().await;
+        // FMU Driver main thread is stopping
 
         info!("[{}] FMU Driver main thread stopped.", fmu_id);
     }
 
-    fn handle_orchestrator_command_message(
+    // Function to load the FMU config to parse the input topics and populate all_topics_to_subscribe,
+    // and return a tuple of (step_trigger_topic, step_trigger_msg_type)
+    fn load_fmu_config(
+        fmu_id: &str,
+        fmu_config_json: &Value,
+        all_topics_to_subscribe: &mut HashSet<(String, String)>,
+    ) -> (String, String) {
+        if let Some(in_topics) = fmu_config_json.get("component_input_topics") {
+            for in_topic_info in in_topics
+                .as_array()
+                .expect("Unable to get 'component_input_topics' as array")
+            {
+                let in_topic = in_topic_info
+                    .get("topic")
+                    .expect("Unable to get 'topic' field from JSON")
+                    .as_str()
+                    .expect("Unable to get 'topic' as string");
+                let msg_type = in_topic_info
+                    .get("msg_type")
+                    .expect("Unable to get 'msg_type' field from JSON")
+                    .as_str()
+                    .expect("Unable to get 'msg_type' as string");
+                all_topics_to_subscribe.insert((msg_type.to_string(), in_topic.to_string()));
+            }
+        }
+
+        if let Some(aux_in_mapping) = fmu_config_json.get("fmu_aux_input_mapping") {
+            for (in_topic_root, _) in aux_in_mapping
+                .as_object()
+                .expect("Unable to get 'fmu_aux_input_mapping' as object")
+            {
+                all_topics_to_subscribe.insert((
+                    "aerosim::types::JsonData".to_string(),
+                    in_topic_root.to_string(),
+                ));
+            }
+        }
+
+        if let Some(step_topic_val) = fmu_config_json.get("step_trigger_topic") {
+            let step_topic_obj = step_topic_val
+                .as_object()
+                .expect("Unable to process 'step_trigger_topic' as a JSON object.");
+            let step_trigger_topic = step_topic_obj
+                .get("topic")
+                .and_then(|v| v.as_str())
+                .expect("Unable to parse 'step_trigger_topic.topic' from JSON.");
+            let step_trigger_msg_type = step_topic_obj
+                .get("msg_type")
+                .and_then(|v| v.as_str())
+                .expect("Unable to parse 'step_trigger_topic.msg_type' from JSON.");
+            return (
+                step_trigger_topic.to_string(),
+                step_trigger_msg_type.to_string(),
+            );
+        } else {
+            info!("[{}] Unable to find 'step_trigger_topic' field in FMU config. Using base 'aerosim.clock' topic as step trigger.", fmu_id);
+            return (
+                "aerosim.clock".to_string(),
+                "aerosim::types::JsonData".to_string(),
+            );
+        }
+    }
+
+    // Function to load the FMU model instance from the config FMU model file path, returning
+    // the Fmi3Model object and the Fmi3ModelVarInfo struct of the FMU's variable metadata
+    fn load_fmu_model(
+        fmu_id: &str,
+        working_dir: &str,
+        fmu_config_json: &Value,
+    ) -> (Option<Fmi3Model>, Option<Fmi3ModelVarInfo>) {
+        // ------------------------------------------------------------
+        // FMU model file path processing
+
+        let fmu_model_path = fmu_config_json
+            .get("fmu_model_path")
+            .expect("Unable to get 'fmu_model_path' field from JSON")
+            .as_str()
+            .expect("Unable to get 'fmu_model_path' as string");
+        let mut fmu_model_path_buf = Path::new(fmu_model_path).to_path_buf();
+
+        // Check if file exists at fmu_model_path
+        if !fmu_model_path_buf.exists() {
+            // If the FMU model path is not found, check if it is relative to
+            // the AeroSim root dir
+            let aerosim_root = match std::env::var("AEROSIM_ROOT") {
+                Ok(root_path) => root_path,
+                Err(_) => "".to_string(),
+            };
+
+            fmu_model_path_buf = Path::new(&aerosim_root).join(fmu_model_path);
+        }
+
+        if !fmu_model_path_buf.exists() {
+            // If the FMU model path is still not found, check if it is relative to
+            // the working directory
+            fmu_model_path_buf = Path::new(&working_dir).join(fmu_model_path);
+        }
+
+        let fmu_filename = std::path::absolute(fmu_model_path_buf)
+            .expect("Unable to resolve FMU model path as an absolute path.");
+
+        info!("[{}] Loading FMU file: {:?}", fmu_id, fmu_filename);
+
+        // Peek the model description to check the FMI version
+        let min_model_desc =
+            fmi::import::peek_descr_path(&fmu_filename).expect("Unable to peek model description.");
+
+        if min_model_desc.version_string() == "2.0" {
+            // ------------------------------------------------------------
+            // FMI 2.0 model processing
+
+            let _fmu_import: Fmi2Import =
+                fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file.");
+
+            todo!("FMI 2.0 model processing not implemented yet.");
+        } else if min_model_desc.version_string() == "3.0" {
+            // ------------------------------------------------------------
+            // FMI 3.0 model processing
+
+            // Load the FMU instance
+            let fmu_model = Some(Fmi3Model::new(fmu_filename));
+            let fmu_model_var_info =
+                Some(Fmi3ModelVarInfo::new(fmu_id, fmu_model.as_ref().unwrap()));
+
+            return (fmu_model, fmu_model_var_info);
+        }
+
+        (None, None)
+    }
+
+    // Function to initialize the FMU model (set initial values from the config, publish
+    // the initial output topics with values for t=0)
+    async fn initialize_fmu_model(
+        fmu_id: &str,
+        fmu_config_json: &Value,
+        fmu_time: f64,
+        initial_timestamp: &TimeStamp,
+        middleware: &Arc<MiddlewareEnum>,
+        serializer: &SerializerEnum,
+        fmu_model: &mut Option<Fmi3Model>,
+        fmu_model_var_info: &mut Option<Fmi3ModelVarInfo>,
+    ) {
+        if let (Some(fmu_model_mut), Some(fmu_model_var_info_ref)) =
+            (fmu_model.as_mut(), fmu_model_var_info.as_ref())
+        {
+            let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
+
+            // Set initial values for FMU variables set in the "fmu_initial_vals" config
+            let fmu_init_vals_obj: Option<&serde_json::Map<String, Value>> = fmu_config_json
+                .get("fmu_initial_vals")
+                .and_then(|v| v.as_object());
+            let mut fmu_input_var_init_vals: Vec<(&String, &Value, &Fmi3VarInfo)> = Vec::new();
+            if let Some(fmu_init_vals) = fmu_init_vals_obj {
+                for (init_var, init_value) in fmu_init_vals {
+                    if let Some(fmu_var_info) = fmu_model_var_info_ref.get_fmu_var_info(init_var) {
+                        set_init_value_fmu3(
+                            fmu_id,
+                            init_var,
+                            init_value,
+                            fmu_var_info,
+                            fmu_instance,
+                        );
+                        if fmu_var_info.fmu_var_causality == Causality::Input {
+                            fmu_input_var_init_vals.push((init_var, init_value, fmu_var_info));
+                        }
+                    } else {
+                        warn!(
+                            "[{}] FMU variable '{}' not found in model info.",
+                            fmu_id, init_var
+                        );
+                    }
+                }
+            }
+
+            // Call FMU API to execute its 'enter initialization mode' function
+            // to process the initial values set above
+            FmiInstance::enter_initialization_mode(fmu_instance, None, fmu_time, None);
+
+            // Re-set initial values for FMU input-type variables because they get reset to zero
+            // during FmiInstance::enter_initialization_mode()
+            for (init_var, init_value, fmu_var_info) in fmu_input_var_init_vals {
+                set_init_value_fmu3(fmu_id, init_var, init_value, fmu_var_info, fmu_instance);
+            }
+
+            // Call FMU API to execute its 'exit initialization mode' function
+            // to be ready to start stepping
+            FmiInstance::exit_initialization_mode(fmu_instance);
+
+            // Publish initial value output topics for initial timestamp
+            publish_component_output_topics_fmu3(
+                fmu_id,
+                &fmu_config_json,
+                fmu_model_var_info_ref,
+                fmu_instance,
+                initial_timestamp,
+                middleware,
+                serializer,
+            )
+            .await;
+
+            publish_aux_output_topics_fmu3(
+                fmu_id,
+                &fmu_config_json,
+                fmu_model_var_info_ref,
+                fmu_instance,
+                initial_timestamp,
+                &middleware,
+            )
+            .await;
+        }
+    }
+
+    // Function to execute one sim clock step of the FMU model
+    fn step_fmu_model(
+        fmu_id: &str,
+        fmu_config_json: &Value,
+        simtime_sec: f64,
+        cur_step_sec: f64,
+        fmu_time: &mut f64,
+        fmu_model: &mut Option<Fmi3Model>,
+        fmu_model_var_info: &mut Option<Fmi3ModelVarInfo>,
+        input_data_map: &Arc<Mutex<HashMap<String, (Metadata, Value)>>>,
+    ) {
+        if let (Some(fmu_model_mut), Some(fmu_model_var_info_ref)) =
+            (fmu_model.as_mut(), fmu_model_var_info.as_ref())
+        {
+            let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
+
+            // ------------------------------------------------------------
+            // Write inputs to the FMU
+
+            // Process every input topic that has been received and stored in input_data_map
+            {
+                let mut input_data_map_lock = input_data_map.lock().unwrap();
+                let cur_input_data = input_data_map_lock.drain();
+
+                for (input_topic, (in_msg_metadata, in_msg_json)) in cur_input_data {
+                    // info!(
+                    //     "[{}] Writing input topic '{}' at timestamp: {:?}",
+                    //     fmu_id, input_topic, in_msg_metadata.timestamp_sim
+                    // );
+
+                    let in_msg_flat_fields =
+                        TypeSupport::get_flat_fields_from_json_object(&in_msg_json, "");
+
+                    // TODO Move this parsing to load_fmu_config()
+                    let aux_in_var_map = fmu_config_json
+                        .get("fmu_aux_input_mapping")
+                        .and_then(|aux_in_mapping| aux_in_mapping.get(&input_topic))
+                        .and_then(|aux_in_mapping| aux_in_mapping.as_object());
+
+                    // Iterate through the flat fields and set the FMU variables
+                    for in_msg_var in in_msg_flat_fields {
+                        set_fmu3_from_json(
+                            &in_msg_var,
+                            &in_msg_json,
+                            &in_msg_metadata,
+                            aux_in_var_map,
+                            fmu_id,
+                            fmu_model_var_info_ref,
+                            fmu_instance,
+                        );
+                    }
+                }
+            }
+
+            // ------------------------------------------------------------
+            // Do one step of the FMU
+
+            let no_set_fmu_state_prior_to_current_point = false;
+            let local_step_sec: f64 = cur_step_sec;
+
+            let mut last_fmu_time = *fmu_time;
+            while last_fmu_time < simtime_sec {
+                let mut event_handling_needed = false;
+                let mut terminate_simulation = false;
+                let mut early_return = false;
+                let mut last_successful_time: f64 = 0.0;
+
+                fmu_instance.do_step(
+                    last_fmu_time,
+                    local_step_sec,
+                    no_set_fmu_state_prior_to_current_point,
+                    &mut event_handling_needed,
+                    &mut terminate_simulation,
+                    &mut early_return,
+                    &mut last_successful_time,
+                );
+
+                // Validate that the step was successfully advanced
+                let time_stepped = last_successful_time - last_fmu_time;
+                if event_handling_needed
+                    || terminate_simulation
+                    || early_return
+                    || (time_stepped - local_step_sec).abs() > TIME_SEC_TOL
+                {
+                    error!(
+                        "[{}] FMU did not successfully advance by the target step time.",
+                        fmu_id
+                    );
+                    return;
+                }
+
+                // Advance the time
+                last_fmu_time =
+                    round_to_decimal_places(last_fmu_time + local_step_sec, NUM_TIME_DECIMALS);
+            }
+
+            // Save the completed step's time
+            *fmu_time = last_fmu_time;
+
+            // info!("[{}] FMU step done, fmu_time: {}", fmu_id, fmu_time);
+        }
+    }
+
+    // Callback function for receiving the orchestrator command messages (passes them to FMU driver's
+    // main thread loop)
+    fn receive_orchestrator_command_message(
         payload: JsonData,
         metadata: Metadata,
         tx_orchestrator_msg: &Sender<(JsonData, Metadata)>,
     ) {
         tx_orchestrator_msg
             .send((payload, metadata))
-            .expect("UNable to send orchestrator msg data to FMU Driver thread.");
+            .expect("Unable to send orchestrator msg data to FMU Driver thread.");
     }
 
-    fn handle_clock_message(
-        payload: JsonData,
-        metadata: Metadata,
-        tx_clock_msg: &Sender<(JsonData, Metadata)>,
-        _fmu_id: &str,
+    // Function for processing orchestrator command messages to load the
+    // sim config, start the FMU driver, and stop the FMU driver (run on the FMU driver's
+    // main thread loop)
+    async fn process_orchestrator_command_message(
+        fmu_id: &str,
+        working_dir: &str,
+        middleware: &Arc<MiddlewareEnum>,
+        serializer: &SerializerEnum,
+        payload: &JsonData,
+        metadata: &Metadata,
+        tx_step_msg: &Sender<Metadata>,
+        running: &mut bool,
+        is_sim_config_loaded: &mut bool,
+        is_sim_started: &mut bool,
+        fmu_config_json: &mut Value,
+        all_topics_to_subscribe: &mut HashSet<(String, String)>,
+        fmu_time: &mut f64,
+        fmu_model: &mut Option<Fmi3Model>,
+        fmu_model_var_info: &mut Option<Fmi3ModelVarInfo>,
+        input_data_map: &Arc<Mutex<HashMap<String, (Metadata, Value)>>>,
     ) {
-        tx_clock_msg
-            .send((payload, metadata))
-            .expect("UNable to send clock msg data to FMU Driver thread.");
-    }
-}
+        let msg_json = payload.get_data().expect("Unable to get JsonData payload.");
+        let command = msg_json
+            .get("command")
+            .expect("Unable to get 'command' field from JSON.")
+            .as_str()
+            .expect("Unable to get 'command' as string.");
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use fmi::fmi3::instance::Common;
-
-    #[test]
-    fn test_fmu_float64_array() {
-        let aerosim_root = match std::env::var("AEROSIM_ROOT") {
-            Ok(root_path) => root_path,
-            Err(_) => "".to_string(),
-        };
-
-        // Import FMU model
-
-        let fmu_import: Fmi3Import =
-            fmi::import::from_path(aerosim_root + "/examples/fmu/evtol_vehicle_fmu.fmu")
-                .expect("Unable to import FMU file.");
-
-        let fmu_model_desc = fmu_import.model_description();
-        println!("Model name: {}", fmu_model_desc.model_name);
-
-        // Parse FMU variable info
-
-        let all_fmu_var_iter = itertools::chain!(
-            fmu_model_desc
-                .model_variables
-                .float32
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .float64
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
+        info!(
+            "[{}] FMU Driver received orchestrator command: {}",
+            fmu_id, command
         );
 
-        println!("Loaded FMU variable info:");
-        for fmu_var in all_fmu_var_iter {
-            let fmu_var_ref = fmu_var.value_reference();
-            let fmu_var_name = fmu_var.name();
-            let fmu_var_type = fmu_var.data_type();
-            let fmu_var_dim = fmu_var.dimensions();
-            let fmu_var_caus = fmu_var.causality();
-            println!(
-                "FMU ref={} var={} type={} dim={:?} causality={:?}",
-                fmu_var_ref,
-                fmu_var_name,
-                fmi3_var_type_to_string(&fmu_var_type),
-                fmu_var_dim,
-                fmu_var_caus
-            );
+        if command == "stop" {
+            // ----------------------------------------------------------------
+            // Orchestrator stop command
+
+            *running = false;
+            return;
         }
 
-        // Load FMU instance
-        let mut fmu_instance: fmi::fmi3::instance::InstanceCS = fmu_import
-            .instantiate_cs("instance1", false, true, false, false, &[])
-            .expect("Unable to instantiate FMU.");
+        if *is_sim_config_loaded == false && command == "load_config" {
+            // ----------------------------------------------------------------
+            // Orchestrator load config command
 
-        println!(
-            "FMU instance name: {}, version: {}",
-            FmiInstance::name(&fmu_instance),
-            FmiInstance::get_version(&fmu_instance)
-        );
+            // Load the FMU config into fmu_config_json
+            let sim_config = msg_json
+                .pointer("/parameters/sim_config")
+                .expect("Unable to get ['parameters']['sim_config'] field from JSON")
+                .clone();
 
-        let mut fmu_time: f64 = 0.0;
+            for fmu_config in sim_config
+                .get("fmu_models")
+                .expect("Unable to get 'fmu_models' field from JSON")
+                .as_array()
+                .expect("Unable to get 'fmu_models' as array")
+            {
+                if fmu_config
+                    .get("id")
+                    .expect("Unable to get 'id' field from JSON")
+                    .as_str()
+                    .expect("Unable to get 'id' as string")
+                    == fmu_id
+                {
+                    *fmu_config_json = fmu_config.clone();
+                    break;
+                }
+            }
 
-        FmiInstance::enter_initialization_mode(&mut fmu_instance, None, fmu_time, None);
-        FmiInstance::exit_initialization_mode(&mut fmu_instance);
+            if fmu_config_json.is_null() {
+                warn!("[{}] FMU ID not found in sim config.", fmu_id);
+            }
 
-        // Read then set array variable values
-        let mut init_ned_m = [0.0, 0.0, 0.0];
-        let init_ned_m_vrs = [40];
-        let _ = fmu_instance.get_float64(&init_ned_m_vrs, &mut init_ned_m);
-        println!("Initial, init_ned_m: {:?}", init_ned_m);
-        init_ned_m = [1.0, 2.0, 3.0];
-        let _ = fmu_instance.set_float64(&init_ned_m_vrs, &init_ned_m);
-        println!("Before step, init_ned_m: {:?}", init_ned_m);
+            // info!("[{}] Received fmu_config: {:?}", fmu_id, fmu_config_json);
 
-        // Step FMU
-        let communication_step_size = 0.02;
-        let no_set_fmu_state_prior_to_current_point = false;
+            // Process fmu_config_json
+            let (step_trigger_topic, step_trigger_msg_type) =
+                FmuDriver::load_fmu_config(fmu_id, &fmu_config_json, all_topics_to_subscribe);
 
-        let mut event_handling_needed = false;
-        let mut terminate_simulation = false;
-        let mut early_return = false;
-        let mut last_successful_time: f64 = 0.0;
+            // Subscribe to step trigger topic
+            info!(
+                "[{}] Subscribing to step trigger topic: '{}'",
+                fmu_id, step_trigger_topic
+            );
+            match middleware
+                .subscribe_raw(&step_trigger_msg_type, &step_trigger_topic, {
+                    let tx_step_msg_copy = tx_step_msg.clone();
+                    let serializer_copy = middleware.get_serializer();
+                    Box::new(move |payload| {
+                        let metadata = serializer_copy
+                            .deserialize_metadata(payload)
+                            .expect("Unable to deserialize metadata.");
+                        FmuDriver::receive_step_trigger_message(metadata, &tx_step_msg_copy);
+                        Ok(())
+                    })
+                })
+                .await
+            {
+                Ok(()) => {
+                    info!("[{}] Created step trigger subscriber.", fmu_id)
+                }
+                Err(e) => warn!(
+                    "[{}] Could not create step trigger subscriber: {}",
+                    fmu_id, e
+                ),
+            }
 
-        fmu_instance.do_step(
+            // Subscribe to all of the topics specified in the sim config
+            let all_topic_to_subscribe: Vec<(String, String)> =
+                all_topics_to_subscribe.clone().into_iter().collect();
+
+            info!(
+                "[{}] Subscribing to topics: {:?}",
+                fmu_id, all_topic_to_subscribe
+            );
+
+            let _ = middleware
+                .subscribe_all_raw(
+                    all_topic_to_subscribe,
+                    FmuDriver::process_fmu_input_data(
+                        fmu_id.to_string(),
+                        middleware.get_serializer(),
+                        Arc::clone(&input_data_map),
+                    ),
+                )
+                .await;
+
+            // Load the FMU model file
+            (*fmu_model, *fmu_model_var_info) =
+                FmuDriver::load_fmu_model(fmu_id, working_dir, &fmu_config_json);
+
+            // After loading FMU model file to populate fmu_var_refs, pass
+            // through the world origin values as initial values if the FMU has
+            // variables for it
+            if let Some(fmu_var_info_ref) = fmu_model_var_info.as_ref() {
+                if fmu_var_info_ref
+                    .get_fmu_var_info("world_origin_latitude")
+                    .is_some()
+                    && fmu_var_info_ref
+                        .get_fmu_var_info("world_origin_longitude")
+                        .is_some()
+                    && fmu_var_info_ref
+                        .get_fmu_var_info("world_origin_altitude")
+                        .is_some()
+                {
+                    fmu_config_json["fmu_initial_vals"]["world_origin_latitude"] =
+                        sim_config["world"]["origin"]["latitude"].clone();
+                    fmu_config_json["fmu_initial_vals"]["world_origin_longitude"] =
+                        sim_config["world"]["origin"]["longitude"].clone();
+                    fmu_config_json["fmu_initial_vals"]["world_origin_altitude"] =
+                        sim_config["world"]["origin"]["altitude"].clone();
+                }
+            }
+
+            *is_sim_config_loaded = true;
+            info!("[{}] Done loading sim config.", fmu_id);
+            return;
+        }
+
+        if *is_sim_started == false && command == "start" {
+            // ----------------------------------------------------------------
+            // Orchestrator start command
+
+            {
+                // # Save sim start time from the orchestrator (not used anywhere yet)
+                let sim_start_time_sec = msg_json
+                    .pointer("/parameters/sim_start_time/sec")
+                    .expect("Unable to get ['parameters']['sim_start_time']['sec'] field from JSON")
+                    .as_i64()
+                    .expect("Unable to get 'sec' as i64");
+                let sim_start_time_nanosec = msg_json
+                    .pointer("/parameters/sim_start_time/nanosec")
+                    .expect(
+                        "Unable to get ['parameters']['sim_start_time']['nanosec'] field from JSON",
+                    )
+                    .as_u64()
+                    .expect("Unable to get 'nanosec' as u64");
+                let sim_start_time =
+                    TimeStamp::new(sim_start_time_sec as i32, sim_start_time_nanosec as u32);
+                info!("[{}] Sim start time: {:?}", fmu_id, sim_start_time);
+            }
+
+            let initial_timestamp = metadata.timestamp_sim;
+
+            //Initialize the FMU model instance to be ready to start stepping
+            FmuDriver::initialize_fmu_model(
+                fmu_id,
+                &fmu_config_json,
+                *fmu_time,
+                &initial_timestamp,
+                &middleware,
+                &serializer,
+                fmu_model,
+                fmu_model_var_info,
+            )
+            .await;
+
+            *is_sim_started = true;
+            return;
+        }
+
+        info!("[{}] Ignoring orchestrator command: {}", fmu_id, command);
+    }
+
+    // Callback function for receiving the messages to trigger FMU steps (passes them to FMU driver's
+    // main thread loop)
+    fn receive_step_trigger_message(metadata: Metadata, tx_step_msg: &Sender<Metadata>) {
+        tx_step_msg
+            .send(metadata)
+            .expect("Unable to send step trigger msg to FMU Driver thread.");
+    }
+
+    // Function for processing the received messages to trigger FMU steps (run on the FMU driver's
+    // main thread loop)
+    async fn process_step_trigger_message(
+        fmu_id: &str,
+        fmu_config_json: &Value,
+        middleware: &Arc<MiddlewareEnum>,
+        serializer: &SerializerEnum,
+        metadata: &Metadata,
+        fmu_time: &mut f64,
+        fmu_model: &mut Option<Fmi3Model>,
+        fmu_model_var_info: &mut Option<Fmi3ModelVarInfo>,
+        input_data_map: &Arc<Mutex<HashMap<String, (Metadata, Value)>>>,
+    ) {
+        if !metadata.is_sim_time_valid() {
+            warn!(
+                "[{}] Received a step trigger message with an invalid timestamp_sim.",
+                fmu_id
+            );
+            return;
+        }
+        let timestamp_sim = &metadata.timestamp_sim;
+
+        // info!(
+        //     "[{}] FMU Driver thread processing step trigger for timestamp_sim: {:?}",
+        //     fmu_id, timestamp_sim
+        // );
+
+        let simtime_sec = timestamp_sim.to_sec_rounded(NUM_TIME_DECIMALS);
+        let mut cur_step_sec = simtime_sec - *fmu_time;
+        if cur_step_sec < 0.0 {
+            warn!(
+                "[{}] Negative time step for simtime_sec='{}' fmu_time='{}'",
+                fmu_id, simtime_sec, fmu_time
+            );
+            return;
+        } else if cur_step_sec < f64::EPSILON {
+            warn!(
+                "[{}] Zero time step for simtime_sec='{}' fmu_time='{}'",
+                fmu_id, simtime_sec, fmu_time
+            );
+            return;
+        }
+        cur_step_sec = round_to_decimal_places(cur_step_sec, NUM_TIME_DECIMALS);
+
+        // ----------------------------------------------------------------
+        // Step the FMU model instance
+
+        FmuDriver::step_fmu_model(
+            fmu_id,
+            fmu_config_json,
+            simtime_sec,
+            cur_step_sec,
             fmu_time,
-            communication_step_size,
-            no_set_fmu_state_prior_to_current_point,
-            &mut event_handling_needed,
-            &mut terminate_simulation,
-            &mut early_return,
-            &mut last_successful_time,
+            fmu_model,
+            fmu_model_var_info,
+            input_data_map,
         );
 
-        fmu_time = last_successful_time;
+        // ----------------------------------------------------------------
+        // Publish output data for the current timestamp
 
-        // Read array variable values
-        let mut init_ned_m = [0.0, 0.0, 0.0];
-        let init_ned_m_vrs = [40];
-        let _ = fmu_instance.get_float64(&init_ned_m_vrs, &mut init_ned_m);
-        println!(
-            "After step, fmu_time: {}, init_ned_m: {:?}",
-            fmu_time, init_ned_m
-        );
+        if let (Some(fmu_model_mut), Some(fmu_model_var_info_ref)) =
+            (fmu_model.as_mut(), fmu_model_var_info.as_ref())
+        {
+            let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
+
+            publish_component_output_topics_fmu3(
+                fmu_id,
+                fmu_config_json,
+                fmu_model_var_info_ref,
+                fmu_instance,
+                &timestamp_sim,
+                middleware,
+                serializer,
+            )
+            .await;
+
+            publish_aux_output_topics_fmu3(
+                fmu_id,
+                fmu_config_json,
+                fmu_model_var_info_ref,
+                fmu_instance,
+                &timestamp_sim,
+                middleware,
+            )
+            .await;
+        }
     }
 
-    #[test]
-    fn test_fmu_int64_array() {
-        let aerosim_root = match std::env::var("AEROSIM_ROOT") {
-            Ok(root_path) => root_path,
-            Err(_) => "".to_string(),
-        };
+    // Callback function for processing the FMU's input topic messages (deserializes and saves the
+    // data into the input data map)
+    fn process_fmu_input_data(
+        fmu_id_str: String,
+        serializer: SerializerEnum,
+        input_data_map: Arc<Mutex<HashMap<String, (Metadata, Value)>>>,
+    ) -> CallbackClosureRaw {
+        Box::new(move |payload: &[u8]| {
+            // Deserialize metadata from the incoming payload and determine the simulation timestamp.
+            // If the simulation timestamp is not valid, compute it based on the real-time platform timestamp.
+            let metadata = serializer
+                .deserialize_metadata(payload)
+                .ok_or(format!("Could not deserialize metadata from payload"))?;
 
-        // Import FMU model
+            let mut input_data_map_lock = input_data_map.lock().unwrap();
 
-        let fmu_import: Fmi3Import =
-            fmi::import::from_path(aerosim_root + "/examples/fmu/Int64ArrayBouncingBall.fmu")
-                .expect("Unable to import FMU file.");
+            // Check if the topic already has data and if the received data is
+            // older than the existing data
+            if let Some((existing_metadata, _existing_data)) =
+                input_data_map_lock.get(&metadata.topic)
+            {
+                if metadata.is_sim_time_valid()
+                    && existing_metadata.is_sim_time_valid()
+                    && metadata.timestamp_sim < existing_metadata.timestamp_sim
+                {
+                    info!(
+                        "[{}] Ignoring older data for topic: {}",
+                        fmu_id_str, metadata.topic
+                    );
+                    return Ok(());
+                }
+            }
 
-        let fmu_model_desc = fmu_import.model_description();
-        println!("Model name: {}", fmu_model_desc.model_name);
+            // Deserialize the payload into a JSON value and store it in the input data map
+            if let Some(msg_json) = deserialize_to_json(&metadata.type_name, &serializer, payload) {
+                input_data_map_lock.insert(metadata.topic.clone(), (metadata, msg_json));
+            } else {
+                warn!(
+                    "[{}] Failed to deserialize payload for topic: {}",
+                    fmu_id_str, metadata.topic
+                );
+            }
 
-        // Parse FMU variable info
-
-        let all_fmu_var_iter = itertools::chain!(
-            fmu_model_desc
-                .model_variables
-                .float32
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .float64
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .int64
-                .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-        );
-
-        println!("Loaded FMU variable info:");
-        for fmu_var in all_fmu_var_iter {
-            let fmu_var_ref = fmu_var.value_reference();
-            let fmu_var_name = fmu_var.name();
-            let fmu_var_type = fmu_var.data_type();
-            let fmu_var_dim = fmu_var.dimensions();
-            let fmu_var_caus = fmu_var.causality();
-            println!(
-                "FMU ref={} var={} type={} dim={:?} causality={:?}",
-                fmu_var_ref,
-                fmu_var_name,
-                fmi3_var_type_to_string(&fmu_var_type),
-                fmu_var_dim,
-                fmu_var_caus
-            );
-        }
-
-        // Load FMU instance
-        let mut fmu_instance: fmi::fmi3::instance::InstanceCS = fmu_import
-            .instantiate_cs("instance1", false, true, false, false, &[])
-            .expect("Unable to instantiate FMU.");
-
-        println!(
-            "FMU instance name: {}, version: {}",
-            FmiInstance::name(&fmu_instance),
-            FmiInstance::get_version(&fmu_instance)
-        );
-
-        let fmu_time: f64 = 0.0;
-
-        FmiInstance::enter_initialization_mode(&mut fmu_instance, None, fmu_time, None);
-        FmiInstance::exit_initialization_mode(&mut fmu_instance);
-
-        // Read then set array variable values
-        let mut h_int_array = [0, 0, 0];
-        let h_int_array_vrs = [8];
-        let res = fmu_instance.get_int64(&h_int_array_vrs, &mut h_int_array);
-        println!("{:?}", res);
-        println!("Initial, h_int_array: {:?}", h_int_array);
-
-        h_int_array = [11, 22, 33];
-        let res = fmu_instance.set_int64(&h_int_array_vrs, &h_int_array);
-        println!("{:?}", res);
-        println!("Before step, h_int_array: {:?}", h_int_array);
-
-        h_int_array = [0, 0, 0];
-        let res = fmu_instance.get_int64(&h_int_array_vrs, &mut h_int_array);
-        println!("{:?}", res);
-        println!("Written, h_int_array: {:?}", h_int_array);
+            Ok(())
+        })
     }
 }

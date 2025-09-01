@@ -1,6 +1,7 @@
 import os
 import shutil
 import threading
+import math
 
 from dotty_dictionary import dotty
 
@@ -15,10 +16,14 @@ from aerosim_sensors import adsb_functions
 
 
 class PyFmuDriver:
-    def __init__(self, fmu_id: str, working_dir: str = "", middleware_type = "zenoh") -> None:
+    def __init__(
+        self, fmu_id: str, working_dir: str = "", middleware_type="zenoh"
+    ) -> None:
         self.fmu_id = fmu_id
+        self.fmudriver_name = f"[aerosim.fmudriver.{self.fmu_id}]"
         self.working_dir = working_dir
         self.unzipped_temp_dir = None
+        self.num_time_decimals = 6  # round time to microsec decimal place
         self.fmu_config_json = {}
         self.aerosim_root_path = os.getenv("AEROSIM_ROOT")
 
@@ -37,9 +42,7 @@ class PyFmuDriver:
             "aerosim.orchestrator.commands",
             self.orchestator_commands_callback,
         )
-        self.transport.subscribe(
-            aerosim_types.JsonData, "aerosim.clock", self.clock_callback
-        )
+        print(f"{self.fmudriver_name} Subscribed to 'aerosim.orchestrator.commands'")
 
         self.reset_data()
 
@@ -61,12 +64,13 @@ class PyFmuDriver:
     def reset_data(self):
         # FMU model data
         self.fmu_filename = ""
-        self.fmudriver_name = f"[aerosim.fmudriver.{self.fmu_id}]"
         self.model_description = None
+
         self.fmu_var_refs = {}
         self.fmu_var_types = {}
         self.fmu_var_causality = {}
         self.fmu_var_dims = {}
+
         self.fmu_instance: FMU3Slave | FMU2Slave | None = None
 
         # FMU instance data
@@ -86,7 +90,7 @@ class PyFmuDriver:
         # Track a set of which topics are aux outputs that need variable remapping
         self.aux_topics_to_publish = set()
 
-    def load_config(self):
+    def load_config(self) -> tuple[str, str]:
         self.all_topics_to_subscribe.clear()
         self.aux_topics_to_subscribe.clear()
         self.aux_topics_to_publish.clear()
@@ -119,6 +123,21 @@ class PyFmuDriver:
                 self.out_topic_data[out_topic_root] = {}
             # print(f"topics_to_publish = {self.topics_to_publish}")
 
+        # Parse step_trigger_topic
+        if "step_trigger_topic" in self.fmu_config_json:
+            step_trigger_topic = self.fmu_config_json["step_trigger_topic"]["topic"]
+            step_trigger_msg_type = self.fmu_config_json["step_trigger_topic"][
+                "msg_type"
+            ]
+        else:
+            print(
+                f"{self.fmudriver_name} Unable to find 'step_trigger_topic' field in FMU config. Using base 'aerosim.clock' topic as step trigger."
+            )
+            step_trigger_topic = "aerosim.clock"
+            step_trigger_msg_type = "aerosim::types::JsonData"
+
+        return (step_trigger_topic, step_trigger_msg_type)
+
     def load_fmu(self):
         fmu_model_path = self.fmu_config_json["fmu_model_path"]
         if not os.path.isfile(fmu_model_path) and self.aerosim_root_path is not None:
@@ -138,18 +157,20 @@ class PyFmuDriver:
 
         # Collect the value references
         for var in self.model_description.modelVariables:
+            print(
+                f"{self.fmudriver_name} "
+                f"FMU ref={var.valueReference} "
+                f"var='{var.name}', "
+                f"type={var.type}, "
+                f"dims={[dim.start for dim in var.dimensions]}, "
+                f"causality={var.causality}"
+            )
             self.fmu_var_refs[var.name] = var.valueReference
             self.fmu_var_types[var.name] = var.type
             self.fmu_var_dims[var.name] = [dim.start for dim in var.dimensions]
             self.fmu_var_causality[var.name] = var.causality
-            print(
-                f"{self.fmudriver_name} "
-                f"FMU ref={self.fmu_var_refs[var.name]} "
-                f"var='{var.name}', "
-                f"type={self.fmu_var_types[var.name]}, "
-                f"dims={self.fmu_var_dims[var.name]}, "
-                f"causality={self.fmu_var_causality[var.name]}"
-            )
+
+        print(f"{self.fmudriver_name} Loaded {len(self.fmu_var_refs)} variables.")
 
         # Extract the FMU
         self.unzipped_temp_dir = fmpy.extract(
@@ -179,7 +200,7 @@ class PyFmuDriver:
             return
 
     def set_fmu_float(self, fmu_var: str, value: float | list[float]):
-        if type(value) is float:
+        if type(value) is not list:
             value = [value]
         if self.model_description.fmiVersion == "3.0":
             self.fmu_instance.setFloat64([self.fmu_var_refs[fmu_var]], value)
@@ -207,7 +228,7 @@ class PyFmuDriver:
         return out_vals
 
     def set_fmu_int(self, fmu_var: str, value: int | list[int]):
-        if type(value) is int:
+        if type(value) is not list:
             value = [value]
         if self.model_description.fmiVersion == "3.0":
             self.fmu_instance.setInt64([self.fmu_var_refs[fmu_var]], value)
@@ -225,7 +246,6 @@ class PyFmuDriver:
             )
             if not array_dim:
                 out_vals = out_vals[0]
-
         elif self.model_description.fmiVersion == "2.0":
             if array_dim:
                 print("FMU 2.0 does not support array dimensions, ignoring array_dim.")
@@ -236,7 +256,7 @@ class PyFmuDriver:
         return out_vals
 
     def set_fmu_string(self, fmu_var: str, value: str | list[str]):
-        if type(value) is str:
+        if type(value) is not list:
             value = [value]
         self.fmu_instance.setString([self.fmu_var_refs[fmu_var]], value)
 
@@ -249,7 +269,6 @@ class PyFmuDriver:
             )
             if not array_dim:
                 out_vals = out_vals[0]
-
         elif self.model_description.fmiVersion == "2.0":
             if array_dim:
                 print("FMU 2.0 does not support array dimensions, ignoring array_dim.")
@@ -260,7 +279,7 @@ class PyFmuDriver:
         return out_vals
 
     def set_fmu_bool(self, fmu_var: str, value: bool | list[bool]):
-        if type(value) is bool:
+        if type(value) is not list:
             value = [value]
         self.fmu_instance.setBoolean([self.fmu_var_refs[fmu_var]], value)
 
@@ -284,7 +303,7 @@ class PyFmuDriver:
         return out_vals
 
     def start(self):
-        print(f"{self.fmudriver_name} Start FMU driver...")
+        print(f"{self.fmudriver_name} Start FMU driver (no-op)...")
         print(f"{self.fmudriver_name} FMU driver is started.")
 
     def init_fmu(self):
@@ -354,7 +373,7 @@ class PyFmuDriver:
         self.fmu_instance.exitInitializationMode()
         self.fmu_time = self.start_time
 
-    def step_fmu(self, simtime_sec):
+    def step_fmu(self, simtime_sec, cur_step_sec):
         if not self.fmu_instance:
             return
 
@@ -404,34 +423,43 @@ class PyFmuDriver:
         # ------------------------------------------------------------
         # Do one step of the FMU
 
-        cur_step_sec = simtime_sec - self.fmu_time
-        if cur_step_sec < 0:
-            print(
-                f"{self.fmudriver_name} WARNING: Negative time step for simtime_sec='{simtime_sec}' fmu_time='{self.fmu_time}'"
-            )
-            return
-
         try:
-            if self.model_description.fmiVersion == "3.0":
-                (
-                    _eventEncountered,
-                    _terminate_simulation,
-                    _early_return,
-                    last_successful_time,
-                ) = self.fmu_instance.doStep(
-                    currentCommunicationPoint=self.fmu_time,
-                    communicationStepSize=cur_step_sec,
-                )
+            local_step_sec = cur_step_sec
+            last_fmu_time = self.fmu_time
+            while last_fmu_time < simtime_sec:
+                if self.model_description.fmiVersion == "3.0":
+                    (
+                        eventEncountered,
+                        terminate_simulation,
+                        early_return,
+                        last_successful_time,
+                    ) = self.fmu_instance.doStep(
+                        currentCommunicationPoint=last_fmu_time,
+                        communicationStepSize=local_step_sec,
+                    )
 
-            elif self.model_description.fmiVersion == "2.0":
-                self.fmu_instance.doStep(
-                    currentCommunicationPoint=self.fmu_time,
-                    communicationStepSize=cur_step_sec,
+                    # Validate that the step was successfully advanced
+                    if (
+                        eventEncountered
+                        or terminate_simulation
+                        or early_return
+                        or not math.isclose(
+                            last_successful_time - last_fmu_time, local_step_sec
+                        )
+                    ):
+                        print(
+                            f"{self.fmudriver_name} ERROR: FMU did not successfully advance by the target step time."
+                        )
+                        return
+                elif self.model_description.fmiVersion == "2.0":
+                    self.fmu_instance.doStep(
+                        currentCommunicationPoint=last_fmu_time,
+                        communicationStepSize=local_step_sec,
+                    )
+
+                last_fmu_time = round(
+                    last_fmu_time + local_step_sec, self.num_time_decimals
                 )
-                _event_encountered = False  # N/A for FMI 2.0
-                _terminate_simulation = False  # N/A for FMI 2.0
-                _early_return = False  # N/A for FMI 2.0
-            last_successful_time = self.fmu_time + cur_step_sec
         except Exception as e:
             print(f"{self.fmudriver_name} ERROR: {e}")
             self._running = False
@@ -439,8 +467,8 @@ class PyFmuDriver:
 
         # print(f"{self.fmudriver_name} Stepped FMU from {self.fmu_time} to {last_successful_time}")
 
-        # Advance the time
-        self.fmu_time = last_successful_time
+        # Advance the advanced FMU time
+        self.fmu_time = last_fmu_time
 
         # ------------------------------------------------------------
         # Read outputs from the FMU to update self.fmu_data
@@ -543,7 +571,7 @@ class PyFmuDriver:
                             print(
                                 f"{self.fmudriver_name} WARNING: Variable '{out_topic_var}' not found in self.fmu_data."
                             )
-                            print(f"Variables are: {self.fmu_data.keys()}")
+                            # print(f"Variables are: {self.fmu_data.keys()}")
 
                     metadata = middleware.Metadata(
                         out_topic, msg_type, timestamp_sim=timestamp
@@ -612,7 +640,17 @@ class PyFmuDriver:
                         return
 
                     # Process self.fmu_config_json
-                    self.load_config()
+                    (step_trigger_topic, step_trigger_msg_type) = self.load_config()
+
+                    # Subscribe to step trigger topic
+                    print(
+                        f"{self.fmudriver_name} Subscribing to step trigger topic '{step_trigger_topic}'"
+                    )
+                    self.transport.subscribe_raw(
+                        step_trigger_msg_type,
+                        step_trigger_topic,
+                        self.step_trigger_callback,
+                    )
 
                     # Subscribe to all of the topics specified in the sim config
                     self.transport.subscribe_all_raw(
@@ -678,30 +716,39 @@ class PyFmuDriver:
                     )
                 return
 
-    def clock_callback(self, data, _):
-        msg_data = data
+    def step_trigger_callback(self, payload):
+        if not self._running or not self._is_sim_started:
+            return
+
+        metadata = self.serializer.deserialize_metadata(payload)
+        if not metadata.is_sim_time_valid():
+            print(
+                f"{self.fmudriver_name} WARNING: Received a step trigger message with an invalid timestamp_sim."
+            )
+            return
+
+        timestamp_sim = metadata.timestamp_sim
+        simtime_sec = timestamp_sim.to_sec_rounded(self.num_time_decimals)
+
+        cur_step_sec = round(simtime_sec - self.fmu_time, self.num_time_decimals)
+        if cur_step_sec < 0.0:
+            print(
+                f"{self.fmudriver_name} WARNING: Negative time step for simtime_sec='{simtime_sec}' fmu_time='{self.fmu_time}'"
+            )
+            return
+        elif math.isclose(cur_step_sec, 0.0):
+            print(
+                f"{self.fmudriver_name} WARNING: Zero time step for simtime_sec='{simtime_sec}' fmu_time='{self.fmu_time}'"
+            )
+            return
 
         with self._processing_callback_lock:
-            if not self._running or not self._is_sim_started:
-                return
-
-            timestamp = aerosim_types.TimeStamp(
-                msg_data["timestamp_sim"]["sec"],
-                msg_data["timestamp_sim"]["nanosec"],
-            )
-            simtime_as_sec = timestamp.sec + timestamp.nanosec / 1.0e9
-
-            # print(
-            #     f"{self.fmudriver_name} Received aerosim.clock message with "
-            #     f"t={simtime_as_sec:.3f} sec"
-            # )
-
             # t1 = time.time()
-            self.step_fmu(simtime_as_sec)
+            self.step_fmu(simtime_sec, cur_step_sec)
             # t2 = time.time()
             # print(f"{self.fmudriver_name} step_fmu t={(t2-t1)*1000:.1f} ms")
 
-            self.publish_output_data(timestamp)
+            self.publish_output_data(timestamp_sim)
 
     def input_data_callback(self, payload):
         metadata = self.serializer.deserialize_metadata(payload)
