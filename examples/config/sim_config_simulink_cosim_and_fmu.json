@@ -12,7 +12,12 @@
                     {
                         "topic": "aerosim.simulink_out",
                         "interval_ms": 20
-                    },
+                    }
+                ]
+            },
+            {
+                "clock_topic": "aerosim.clock.tick_group_02",
+                "sync_topics": [
                     {
                         "topic": "aerosim.actor1.vehicle_state",
                         "interval_ms": 20
@@ -163,7 +168,7 @@
             "fmu_model_path": "examples/fmu/aerosim_simulink_fmu_1DOF_dynamics.fmu",
             "step_trigger_topic": {
                 "msg_type": "aerosim::types::JsonData",
-                "topic": "aerosim.clock.tick_group_01"
+                "topic": "aerosim.clock.tick_group_02"
             },
             "component_input_topics": [],
             "component_output_topics": [
@@ -187,7 +192,7 @@
             "fmu_model_path": "examples/fmu/rotor_effector_fmu_model.fmu",
             "step_trigger_topic": {
                 "msg_type": "aerosim::types::JsonData",
-                "topic": "aerosim.clock.tick_group_01"
+                "topic": "aerosim.clock.tick_group_02"
             },
             "component_input_topics": [],
             "component_output_topics": [
@@ -214,7 +219,7 @@
             "fmu_model_path": "examples/fmu/rotor_effector_fmu_model.fmu",
             "step_trigger_topic": {
                 "msg_type": "aerosim::types::JsonData",
-                "topic": "aerosim.clock.tick_group_01"
+                "topic": "aerosim.clock.tick_group_02"
             },
             "component_input_topics": [],
             "component_output_topics": [
