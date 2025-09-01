@@ -66,10 +66,16 @@ class PyFmuDriver:
         self.fmu_filename = ""
         self.model_description = None
 
+        self.fmu_all_refs = {}
+
         self.fmu_var_refs = {}
         self.fmu_var_types = {}
         self.fmu_var_causality = {}
         self.fmu_var_dims = {}
+
+        self.fmu_param_refs = {}
+        self.fmu_param_types = {}
+        self.fmu_param_dims = {}
 
         self.fmu_instance: FMU3Slave | FMU2Slave | None = None
 
@@ -165,12 +171,20 @@ class PyFmuDriver:
                 f"dims={[dim.start for dim in var.dimensions]}, "
                 f"causality={var.causality}"
             )
-            self.fmu_var_refs[var.name] = var.valueReference
-            self.fmu_var_types[var.name] = var.type
-            self.fmu_var_dims[var.name] = [dim.start for dim in var.dimensions]
-            self.fmu_var_causality[var.name] = var.causality
+            self.fmu_all_refs[var.name] = var.valueReference
+            if var.causality == "parameter":
+                self.fmu_param_refs[var.name] = var.valueReference
+                self.fmu_param_types[var.name] = var.type
+                self.fmu_param_dims[var.name] = [dim.start for dim in var.dimensions]
+            else:
+                self.fmu_var_refs[var.name] = var.valueReference
+                self.fmu_var_types[var.name] = var.type
+                self.fmu_var_dims[var.name] = [dim.start for dim in var.dimensions]
+                self.fmu_var_causality[var.name] = var.causality
 
-        print(f"{self.fmudriver_name} Loaded {len(self.fmu_var_refs)} variables.")
+        print(
+            f"{self.fmudriver_name} Loaded {len(self.fmu_var_refs)} in/output vars and {len(self.fmu_param_refs)} parameters."
+        )
 
         # Extract the FMU
         self.unzipped_temp_dir = fmpy.extract(
@@ -199,57 +213,350 @@ class PyFmuDriver:
             print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
             return
 
-    def set_fmu_float(self, fmu_var: str, value: float | list[float]):
+    def set_fmu_value(self, fmu_var: str, fmu_var_type: str, in_value):
+        if fmu_var_type == "Real" or fmu_var_type == "Float64":
+            self.set_fmu_float64(fmu_var, in_value)
+        elif fmu_var_type == "Float32":
+            self.set_fmu_float32(fmu_var, in_value)
+        elif fmu_var_type == "Integer" or fmu_var_type == "Int64":
+            self.set_fmu_int64(fmu_var, in_value)
+        elif fmu_var_type == "Int32":
+            self.set_fmu_int32(fmu_var, in_value)
+        elif fmu_var_type == "Int16":
+            self.set_fmu_int16(fmu_var, in_value)
+        elif fmu_var_type == "Int8":
+            self.set_fmu_int8(fmu_var, in_value)
+        elif fmu_var_type == "UInt64":
+            self.set_fmu_uint64(fmu_var, in_value)
+        elif fmu_var_type == "UInt32":
+            self.set_fmu_uint32(fmu_var, in_value)
+        elif fmu_var_type == "UInt16":
+            self.set_fmu_uint16(fmu_var, in_value)
+        elif fmu_var_type == "UInt8":
+            self.set_fmu_uint8(fmu_var, in_value)
+        elif fmu_var_type == "String":
+            self.set_fmu_string(fmu_var, in_value)
+        elif fmu_var_type == "Boolean":
+            self.set_fmu_bool(fmu_var, in_value)
+        else:
+            print(
+                f"{self.fmudriver_name} WARNING: Unsupported FMU variable type '{fmu_var_type}'"
+            )
+            return
+
+    def get_fmu_value(self, fmu_var: str, fmu_var_type: str):
+        var_dim = None  # default var_dim to None for scalar variables
+        if fmu_var in self.fmu_var_dims and len(self.fmu_var_dims[fmu_var]) > 0:
+            # var_dim is the total number of elements in the n-dimensional array
+            var_dim = 1
+            for dim in self.fmu_var_dims[fmu_var]:
+                var_dim *= dim
+        elif fmu_var in self.fmu_param_dims and len(self.fmu_param_dims[fmu_var]) > 0:
+            var_dim = 1
+            for dim in self.fmu_param_dims[fmu_var]:
+                var_dim *= dim
+
+        if fmu_var_type == "Real" or fmu_var_type == "Float64":
+            return self.get_fmu_float64(fmu_var, var_dim)
+        elif fmu_var_type == "Float32":
+            return self.get_fmu_float32(fmu_var, var_dim)
+        elif fmu_var_type == "Integer" or fmu_var_type == "Int64":
+            return self.get_fmu_int64(fmu_var, var_dim)
+        elif fmu_var_type == "Int32":
+            return self.get_fmu_int32(fmu_var, var_dim)
+        elif fmu_var_type == "Int16":
+            return self.get_fmu_int16(fmu_var, var_dim)
+        elif fmu_var_type == "Int8":
+            return self.get_fmu_int8(fmu_var, var_dim)
+        elif fmu_var_type == "UInt64":
+            return self.get_fmu_uint64(fmu_var, var_dim)
+        elif fmu_var_type == "UInt32":
+            return self.get_fmu_uint32(fmu_var, var_dim)
+        elif fmu_var_type == "UInt16":
+            return self.get_fmu_uint16(fmu_var, var_dim)
+        elif fmu_var_type == "UInt8":
+            return self.get_fmu_uint8(fmu_var, var_dim)
+        elif fmu_var_type == "String":
+            return self.get_fmu_string(fmu_var, var_dim)
+        elif fmu_var_type == "Boolean":
+            return self.get_fmu_bool(fmu_var, var_dim)
+        else:
+            print(
+                f"{self.fmudriver_name} WARNING: Unsupported FMU variable type '{fmu_var_type}'"
+            )
+            return None
+
+    def set_fmu_float64(self, fmu_var: str, value: float | list[float]):
         if type(value) is not list:
             value = [value]
         if self.model_description.fmiVersion == "3.0":
-            self.fmu_instance.setFloat64([self.fmu_var_refs[fmu_var]], value)
+            self.fmu_instance.setFloat64([self.fmu_all_refs[fmu_var]], value)
         elif self.model_description.fmiVersion == "2.0":
-            self.fmu_instance.setReal([self.fmu_var_refs[fmu_var]], value)
+            self.fmu_instance.setReal([self.fmu_all_refs[fmu_var]], value)
         else:
             print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
 
-    def get_fmu_float(
+    def get_fmu_float64(
         self, fmu_var: str, array_dim: int | None = None
     ) -> float | list[float]:
         if self.model_description.fmiVersion == "3.0":
             out_vals = self.fmu_instance.getFloat64(
-                vr=[self.fmu_var_refs[fmu_var]], nValues=array_dim
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
             )
             if not array_dim:
                 out_vals = out_vals[0]
         elif self.model_description.fmiVersion == "2.0":
             if array_dim:
                 print("FMU 2.0 does not support array dimensions, ignoring array_dim.")
-            out_vals = self.fmu_instance.getReal([self.fmu_var_refs[fmu_var]])[0]
+            out_vals = self.fmu_instance.getReal([self.fmu_all_refs[fmu_var]])[0]
         else:
             print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
             out_vals = 0.0
         return out_vals
 
-    def set_fmu_int(self, fmu_var: str, value: int | list[int]):
+    def set_fmu_float32(self, fmu_var: str, value: float | list[float]):
         if type(value) is not list:
             value = [value]
         if self.model_description.fmiVersion == "3.0":
-            self.fmu_instance.setInt64([self.fmu_var_refs[fmu_var]], value)
+            self.fmu_instance.setFloat32([self.fmu_all_refs[fmu_var]], value)
         elif self.model_description.fmiVersion == "2.0":
-            self.fmu_instance.setInteger([self.fmu_var_refs[fmu_var]], value)
+            print(
+                f"{self.fmudriver_name} Error: FMI 2.0 does not support Float32 type."
+            )
         else:
             print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
 
-    def get_fmu_int(
+    def get_fmu_float32(
+        self, fmu_var: str, array_dim: int | None = None
+    ) -> float | list[float]:
+        if self.model_description.fmiVersion == "3.0":
+            out_vals = self.fmu_instance.getFloat32(
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
+            )
+            if not array_dim:
+                out_vals = out_vals[0]
+        elif self.model_description.fmiVersion == "2.0":
+            print(
+                f"{self.fmudriver_name} Error: FMI 2.0 does not support Float32 type."
+            )
+            out_vals = 0.0
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+            out_vals = 0.0
+        return out_vals
+
+    def set_fmu_int64(self, fmu_var: str, value: int | list[int]):
+        if type(value) is not list:
+            value = [value]
+        if self.model_description.fmiVersion == "3.0":
+            self.fmu_instance.setInt64([self.fmu_all_refs[fmu_var]], value)
+        elif self.model_description.fmiVersion == "2.0":
+            self.fmu_instance.setInteger([self.fmu_all_refs[fmu_var]], value)
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+
+    def get_fmu_int64(
         self, fmu_var: str, array_dim: int | None = None
     ) -> int | list[int]:
         if self.model_description.fmiVersion == "3.0":
             out_vals = self.fmu_instance.getInt64(
-                vr=[self.fmu_var_refs[fmu_var]], nValues=array_dim
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
             )
             if not array_dim:
                 out_vals = out_vals[0]
         elif self.model_description.fmiVersion == "2.0":
             if array_dim:
                 print("FMU 2.0 does not support array dimensions, ignoring array_dim.")
-            out_vals = self.fmu_instance.getInteger([self.fmu_var_refs[fmu_var]])[0]
+            out_vals = self.fmu_instance.getInteger([self.fmu_all_refs[fmu_var]])[0]
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+            out_vals = 0
+        return out_vals
+
+    def set_fmu_int32(self, fmu_var: str, value: int | list[int]):
+        if type(value) is not list:
+            value = [value]
+        if self.model_description.fmiVersion == "3.0":
+            self.fmu_instance.setInt32([self.fmu_all_refs[fmu_var]], value)
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support Int32 type.")
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+
+    def get_fmu_int32(
+        self, fmu_var: str, array_dim: int | None = None
+    ) -> int | list[int]:
+        if self.model_description.fmiVersion == "3.0":
+            out_vals = self.fmu_instance.getInt32(
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
+            )
+            if not array_dim:
+                out_vals = out_vals[0]
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support Int32 type.")
+            out_vals = 0
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+            out_vals = 0
+        return out_vals
+
+    def set_fmu_int16(self, fmu_var: str, value: int | list[int]):
+        if type(value) is not list:
+            value = [value]
+        if self.model_description.fmiVersion == "3.0":
+            self.fmu_instance.setInt16([self.fmu_all_refs[fmu_var]], value)
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support Int16 type.")
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+
+    def get_fmu_int16(
+        self, fmu_var: str, array_dim: int | None = None
+    ) -> int | list[int]:
+        if self.model_description.fmiVersion == "3.0":
+            out_vals = self.fmu_instance.getInt16(
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
+            )
+            if not array_dim:
+                out_vals = out_vals[0]
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support Int16 type.")
+            out_vals = 0
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+            out_vals = 0
+        return out_vals
+
+    def set_fmu_int8(self, fmu_var: str, value: int | list[int]):
+        if type(value) is not list:
+            value = [value]
+        if self.model_description.fmiVersion == "3.0":
+            self.fmu_instance.setInt8([self.fmu_all_refs[fmu_var]], value)
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support Int8 type.")
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+
+    def get_fmu_int8(
+        self, fmu_var: str, array_dim: int | None = None
+    ) -> int | list[int]:
+        if self.model_description.fmiVersion == "3.0":
+            out_vals = self.fmu_instance.getInt8(
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
+            )
+            if not array_dim:
+                out_vals = out_vals[0]
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support Int8 type.")
+            out_vals = 0
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+            out_vals = 0
+        return out_vals
+
+    def set_fmu_uint64(self, fmu_var: str, value: int | list[int]):
+        if type(value) is not list:
+            value = [value]
+        if self.model_description.fmiVersion == "3.0":
+            self.fmu_instance.setUInt64([self.fmu_all_refs[fmu_var]], value)
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support UInt64 type.")
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+
+    def get_fmu_uint64(
+        self, fmu_var: str, array_dim: int | None = None
+    ) -> int | list[int]:
+        if self.model_description.fmiVersion == "3.0":
+            out_vals = self.fmu_instance.getUInt64(
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
+            )
+            if not array_dim:
+                out_vals = out_vals[0]
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support UInt64 type.")
+            out_vals = 0
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+            out_vals = 0
+        return out_vals
+
+    def set_fmu_uint32(self, fmu_var: str, value: int | list[int]):
+        if type(value) is not list:
+            value = [value]
+        if self.model_description.fmiVersion == "3.0":
+            self.fmu_instance.setUInt32([self.fmu_all_refs[fmu_var]], value)
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support UInt32 type.")
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+
+    def get_fmu_uint32(
+        self, fmu_var: str, array_dim: int | None = None
+    ) -> int | list[int]:
+        if self.model_description.fmiVersion == "3.0":
+            out_vals = self.fmu_instance.getUInt32(
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
+            )
+            if not array_dim:
+                out_vals = out_vals[0]
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support UInt32 type.")
+            out_vals = 0
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+            out_vals = 0
+        return out_vals
+
+    def set_fmu_uint16(self, fmu_var: str, value: int | list[int]):
+        if type(value) is not list:
+            value = [value]
+        if self.model_description.fmiVersion == "3.0":
+            self.fmu_instance.setUInt16([self.fmu_all_refs[fmu_var]], value)
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support UInt16 type.")
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+
+    def get_fmu_uint16(
+        self, fmu_var: str, array_dim: int | None = None
+    ) -> int | list[int]:
+        if self.model_description.fmiVersion == "3.0":
+            out_vals = self.fmu_instance.getUInt16(
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
+            )
+            if not array_dim:
+                out_vals = out_vals[0]
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support UInt16 type.")
+            out_vals = 0
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+            out_vals = 0
+        return out_vals
+
+    def set_fmu_uint8(self, fmu_var: str, value: int | list[int]):
+        if type(value) is not list:
+            value = [value]
+        if self.model_description.fmiVersion == "3.0":
+            self.fmu_instance.setUInt8([self.fmu_all_refs[fmu_var]], value)
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support UInt8 type.")
+        else:
+            print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
+
+    def get_fmu_uint8(
+        self, fmu_var: str, array_dim: int | None = None
+    ) -> int | list[int]:
+        if self.model_description.fmiVersion == "3.0":
+            out_vals = self.fmu_instance.getUInt8(
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
+            )
+            if not array_dim:
+                out_vals = out_vals[0]
+        elif self.model_description.fmiVersion == "2.0":
+            print(f"{self.fmudriver_name} Error: FMI 2.0 does not support UInt8 type.")
+            out_vals = 0
         else:
             print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
             out_vals = 0
@@ -258,21 +565,21 @@ class PyFmuDriver:
     def set_fmu_string(self, fmu_var: str, value: str | list[str]):
         if type(value) is not list:
             value = [value]
-        self.fmu_instance.setString([self.fmu_var_refs[fmu_var]], value)
+        self.fmu_instance.setString([self.fmu_all_refs[fmu_var]], value)
 
     def get_fmu_string(
         self, fmu_var: str, array_dim: int | None = None
     ) -> str | list[str]:
         if self.model_description.fmiVersion == "3.0":
             out_vals = self.fmu_instance.getString(
-                vr=[self.fmu_var_refs[fmu_var]], nValues=array_dim
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
             )
             if not array_dim:
                 out_vals = out_vals[0]
         elif self.model_description.fmiVersion == "2.0":
             if array_dim:
                 print("FMU 2.0 does not support array dimensions, ignoring array_dim.")
-            out_vals = self.fmu_instance.getString([self.fmu_var_refs[fmu_var]])[0]
+            out_vals = self.fmu_instance.getString([self.fmu_all_refs[fmu_var]])[0]
         else:
             print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
             out_vals = ""
@@ -281,14 +588,14 @@ class PyFmuDriver:
     def set_fmu_bool(self, fmu_var: str, value: bool | list[bool]):
         if type(value) is not list:
             value = [value]
-        self.fmu_instance.setBoolean([self.fmu_var_refs[fmu_var]], value)
+        self.fmu_instance.setBoolean([self.fmu_all_refs[fmu_var]], value)
 
     def get_fmu_bool(
         self, fmu_var: str, array_dim: int | None = None
     ) -> bool | list[bool]:
         if self.model_description.fmiVersion == "3.0":
             out_vals = self.fmu_instance.getBoolean(
-                vr=[self.fmu_var_refs[fmu_var]], nValues=array_dim
+                vr=[self.fmu_all_refs[fmu_var]], nValues=array_dim
             )
             if not array_dim:
                 out_vals = out_vals[0]
@@ -296,7 +603,7 @@ class PyFmuDriver:
         elif self.model_description.fmiVersion == "2.0":
             if array_dim:
                 print("FMU 2.0 does not support array dimensions, ignoring array_dim.")
-            out_vals = self.fmu_instance.getBoolean([self.fmu_var_refs[fmu_var]])[0]
+            out_vals = self.fmu_instance.getBoolean([self.fmu_all_refs[fmu_var]])[0]
         else:
             print(f"{self.fmudriver_name} Error: Unsupported FMI version.")
             out_vals = False
@@ -306,58 +613,44 @@ class PyFmuDriver:
         print(f"{self.fmudriver_name} Start FMU driver (no-op)...")
         print(f"{self.fmudriver_name} FMU driver is started.")
 
-    def init_fmu(self):
-        # Instantiate the FMU
-        self.fmu_instance.instantiate()
-
-        # Set some base default values for all FMU input/output variables (these are
-        # used in initial published output at t=0 for any variables set below by
-        # values specified in the "fmu_initial_vals" config)
-        for fmu_var, fmu_var_type in self.fmu_var_types.items():
-            var_dim = None  # default var_dim to None for scalar variables
-            if len(self.fmu_var_dims[fmu_var]) > 0:
-                # var_dim is the total number of elements in the n-dimensional array
-                var_dim = 1
-                for dim in self.fmu_var_dims[fmu_var]:
-                    var_dim *= dim
-            if fmu_var_type == "Real" or fmu_var_type == "Float64":
-                self.fmu_data[fmu_var] = 0.0 if not var_dim else [0.0] * var_dim
-            elif fmu_var_type == "Integer" or fmu_var_type == "Int64":
-                self.fmu_data[fmu_var] = 0 if not var_dim else [0] * var_dim
-            elif fmu_var_type == "String":
-                self.fmu_data[fmu_var] = ""
-            elif fmu_var_type == "Boolean":
-                self.fmu_data[fmu_var] = False
-            else:
-                # TODO Handle other FMI 3.0 types
-                print(
-                    f"{self.fmudriver_name} WARNING: Unsupported FMU variable type '{fmu_var_type}'"
-                )
-                continue
-
-        # Set initial values for FMU variables set in the "fmu_initial_vals" config
+    def set_fmu_initial_values(self):
+        # Set initial values for FMU variables specified in the "fmu_initial_vals" config
         for init_var, init_value in self.fmu_config_json["fmu_initial_vals"].items():
             print(
                 f"{self.fmudriver_name} Setting initial value {init_var} = {init_value}"
             )
-            # Handle the case where the initial value is a list of values
-            init_value_type = (
-                type(init_value[0]) if type(init_value) is list else type(init_value)
-            )
 
-            # Set initial values for the specified FMU variables
-            if init_value_type is float:
-                self.set_fmu_float(init_var, init_value)
-            elif init_value_type is int:
-                self.set_fmu_int(init_var, init_value)
-            elif init_value_type is str:
-                self.set_fmu_string(init_var, init_value)
-            elif init_value_type is bool:
-                self.set_fmu_bool(init_var, init_value)
+            if init_var in self.fmu_param_types:
+                init_var_type = self.fmu_param_types[init_var]
+            elif init_var in self.fmu_var_types:
+                init_var_type = self.fmu_var_types[init_var]
             else:
-                print(f"{self.fmudriver_name} Error: Unsupported initial value type.")
+                print(
+                    f"{self.fmudriver_name} WARNING: Invalid initial value variable '{init_var}'"
+                )
                 continue
+
+            self.set_fmu_value(init_var, init_var_type, init_value)
             self.fmu_data[init_var] = init_value
+
+    def init_fmu(self):
+        # Instantiate the FMU
+        self.fmu_instance.instantiate()
+
+        # Read base default values for all FMU params and input/output variables
+        # (these are used in initial published output at t=0, but are overwritten
+        # in self.set_fmu_initial_values() called below by any values set in the
+        # "fmu_initial_vals" config)
+        for fmu_param, fmu_param_type in self.fmu_param_types.items():
+            ret_val = self.get_fmu_value(fmu_param, fmu_param_type)
+            if ret_val is not None:
+                self.fmu_data[fmu_param] = ret_val
+        for fmu_var, fmu_var_type in self.fmu_var_types.items():
+            ret_val = self.get_fmu_value(fmu_var, fmu_var_type)
+            if ret_val is not None:
+                self.fmu_data[fmu_var] = ret_val
+
+        self.set_fmu_initial_values()
 
         # Initialize the FMU states
         if self.model_description.fmiVersion == "3.0":
@@ -405,20 +698,7 @@ class PyFmuDriver:
                     fmu_var = topic_var
 
                 fmu_var_type = self.fmu_var_types[fmu_var]
-                if fmu_var_type == "Real" or fmu_var_type == "Float64":
-                    self.set_fmu_float(fmu_var, in_value)
-                elif fmu_var_type == "Integer" or fmu_var_type == "Int64":
-                    self.set_fmu_int(fmu_var, in_value)
-                elif fmu_var_type == "String":
-                    self.set_fmu_string(fmu_var, in_value)
-                elif fmu_var_type == "Boolean":
-                    self.set_fmu_bool(fmu_var, in_value)
-                else:
-                    # TODO Handle other FMI 3.0 types
-                    print(
-                        f"{self.fmudriver_name} WARNING: Unsupported FMU variable type '{fmu_var_type}'"
-                    )
-                    continue
+                self.set_fmu_value(fmu_var, fmu_var_type, in_value)
 
         # ------------------------------------------------------------
         # Do one step of the FMU
@@ -475,26 +755,9 @@ class PyFmuDriver:
 
         # Store latest values for all FMU in/output variables
         for fmu_var, fmu_var_type in self.fmu_var_types.items():
-            var_dim = None  # default var_dim to None for scalar variables
-            if len(self.fmu_var_dims[fmu_var]) > 0:
-                # var_dim is the total number of elements in the n-dimensional array
-                var_dim = 1
-                for dim in self.fmu_var_dims[fmu_var]:
-                    var_dim *= dim
-            if fmu_var_type == "Real" or fmu_var_type == "Float64":
-                self.fmu_data[fmu_var] = self.get_fmu_float(fmu_var, var_dim)
-            elif fmu_var_type == "Integer" or fmu_var_type == "Int64":
-                self.fmu_data[fmu_var] = self.get_fmu_int(fmu_var, var_dim)
-            elif fmu_var_type == "String":
-                self.fmu_data[fmu_var] = self.get_fmu_string(fmu_var, var_dim)
-            elif fmu_var_type == "Boolean":
-                self.fmu_data[fmu_var] = self.get_fmu_bool(fmu_var, var_dim)
-            else:
-                # TODO Handle other FMI 3.0 types
-                print(
-                    f"{self.fmudriver_name} WARNING: Unsupported FMU variable type '{fmu_var_type}'"
-                )
-                continue
+            ret_val = self.get_fmu_value(fmu_var, fmu_var_type)
+            if ret_val is not None:
+                self.fmu_data[fmu_var] = ret_val
 
         # Process auxiliary FMU outputs to topics
         if "fmu_aux_output_mapping" in self.fmu_config_json:
@@ -661,12 +924,12 @@ class PyFmuDriver:
                     # Load the FMU model file
                     self.load_fmu()
 
-                    # After loading FMU model file to populate self.fmu_var_refs, pass
+                    # After loading FMU model file to populate self.fmu_param_refs, pass
                     # through the world origin values if the FMU has variables for it
                     if (
-                        "world_origin_latitude" in self.fmu_var_refs
-                        and "world_origin_longitude" in self.fmu_var_refs
-                        and "world_origin_altitude" in self.fmu_var_refs
+                        "world_origin_latitude" in self.fmu_param_refs
+                        and "world_origin_longitude" in self.fmu_param_refs
+                        and "world_origin_altitude" in self.fmu_param_refs
                     ):
                         self.fmu_config_json["fmu_initial_vals"][
                             "world_origin_latitude"
@@ -729,6 +992,13 @@ class PyFmuDriver:
 
         timestamp_sim = metadata.timestamp_sim
         simtime_sec = timestamp_sim.to_sec_rounded(self.num_time_decimals)
+
+        # timestamp_platform_sec = metadata.timestamp_platform.to_sec_rounded(
+        #     self.num_time_decimals
+        # )
+        # print(
+        #     f"{self.fmudriver_name} Received step trigger msg with simtime_sec={simtime_sec:.3f} transport time={(time.time() - timestamp_platform_sec) * 1000.0:.1f} ms"
+        # )
 
         cur_step_sec = round(simtime_sec - self.fmu_time, self.num_time_decimals)
         if cur_step_sec < 0.0:
