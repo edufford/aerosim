@@ -60,15 +60,28 @@ pub extern "C" fn initialize_logger(log_file: *const c_char) {
 }
 
 #[no_mangle]
-pub extern "C" fn initialize_message_handler(instance_id: *const c_char) -> bool {
+pub extern "C" fn initialize_message_handler(
+    instance_id: *const c_char,
+    middleware_type: *const c_char,
+) -> bool {
     info!("[aerosim.renderer] Initializing message handler.");
 
     // Convert the C string (instance_id) to a Rust string
-    let c_str = unsafe {
+    let instance_id_c_str = unsafe {
         assert!(!instance_id.is_null());
         CStr::from_ptr(instance_id)
     };
-    let instance_id_str = c_str.to_str().unwrap();
+    let instance_id_str = instance_id_c_str
+        .to_str()
+        .expect("Failed to convert instance_id C string to Rust string.");
+
+    let middleware_c_str = unsafe {
+        assert!(!middleware_type.is_null());
+        CStr::from_ptr(middleware_type)
+    };
+    let middleware_type_str = middleware_c_str
+        .to_str()
+        .expect("Failed to convert middleware_type C string to Rust string.");
 
     let mut handler = match GLOBAL_HANDLER.lock() {
         Ok(handler) => handler,
@@ -86,7 +99,7 @@ pub extern "C" fn initialize_message_handler(instance_id: *const c_char) -> bool
     }
 
     info!("[aerosim.renderer] Creating a new MessageHandler.");
-    *handler = Some(MessageHandler::new(instance_id_str));
+    *handler = Some(MessageHandler::new(instance_id_str, middleware_type_str));
 
     true
 }
@@ -203,7 +216,7 @@ pub extern "C" fn publish_image_to_topic(
         ),
         height: height as u32,
         width: width as u32,
-        encoding,  // Hardcoded to BGRA on the renderer side.
+        encoding, // Hardcoded to BGRA on the renderer side.
         is_bigendian: 0,
         step: (width * 4) as u32, // Assuming there is no padding
         data: Cow::Borrowed(image_data),

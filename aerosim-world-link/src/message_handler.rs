@@ -120,17 +120,32 @@ pub struct MessageHandler {
 }
 
 impl MessageHandler {
-    pub fn new(renderer_id: &str) -> Self {
+    pub fn new(renderer_id: &str, middleware_type: &str) -> Self {
         info!("[aerosim.renderer.message_handler] Creating a new MessageHandler.");
 
         let (tx_stop, rx_stop) = tokio::sync::mpsc::channel::<bool>(1);
         let (tx_img, rx_img) = tokio::sync::mpsc::channel::<(String, Image)>(1);
 
+        let transport = match middleware_type {
+            "kafka" => MiddlewareRegistry::new()
+                .get("kafka")
+                .expect("Failed to get Kafka middleware."),
+            "zenoh" => MiddlewareRegistry::new()
+                .get("zenoh")
+                .expect("Failed to get Zenoh middleware."),
+            _ => {
+                warn!("[aerosim.renderer.message_handler] Invalid middleware type: {}. Using 'zenoh' as default.", middleware_type);
+                MiddlewareRegistry::new()
+                    .get("zenoh")
+                    .expect("Failed to get Zenoh middleware.")
+            }
+        };
+
         MessageHandler {
             renderer_id: renderer_id.to_string(),
             _sim_config: serde_json::Value::Null,
             runtime: Arc::new(tokio::runtime::Runtime::new().unwrap()),
-            transport: MiddlewareRegistry::new().get("zenoh").unwrap(),
+            transport: transport,
             payload_queue: Arc::new(Mutex::new(PayloadQueue::new())),
             assigned_sensors: Arc::new(Mutex::new(HashSet::new())),
             thread_handle: None,

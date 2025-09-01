@@ -1,5 +1,6 @@
 {
     "description": "Detect and Avoid Scenario.",
+    "middleware_type": "zenoh",
     "clock": {
         "step_size_ms": 20,
         "pace_1x_scale": true
