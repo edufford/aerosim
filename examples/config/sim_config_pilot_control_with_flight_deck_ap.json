@@ -5,18 +5,23 @@
         "pace_1x_scale": true
     },
     "orchestrator": {
-        "sync_topics": [
+        "tick_groups": [
             {
-                "topic": "aerosim.actor1.flight_control_command",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.aircraft_effector_command",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.vehicle_state",
-                "interval_ms": 20
+                "clock_topic": "aerosim.clock.tick_group_01",
+                "sync_topics": [
+                    {
+                        "topic": "aerosim.actor1.flight_control_command",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.aircraft_effector_command",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.vehicle_state",
+                        "interval_ms": 20
+                    }
+                ]
             }
         ],
         "output_sim_data_file": "simdata_pilot_control_with_flight_deck.mcap"
@@ -174,6 +179,10 @@
         {
             "id": "autopilot_controller",
             "fmu_model_path": "examples/fmu/jsbsim_autopilot_controller_fmu_model.fmu",
+            "step_trigger_topic": {
+                "msg_type": "aerosim::types::JsonData",
+                "topic": "aerosim.clock.tick_group_01"
+            },
             "component_input_topics": [
                 {
                     "msg_type": "aerosim::types::AutopilotCommand",
@@ -219,6 +228,10 @@
         {
             "id": "flight_controller",
             "fmu_model_path": "examples/fmu/jsbsim_flight_controller_fmu_model.fmu",
+            "step_trigger_topic": {
+                "msg_type": "aerosim::types::JsonData",
+                "topic": "aerosim.clock.tick_group_01"
+            },
             "component_input_topics": [
                 {
                     "msg_type": "aerosim::types::FlightControlCommand",
@@ -245,6 +258,10 @@
         {
             "id": "dynamics_model",
             "fmu_model_path": "examples/fmu/jsbsim_dynamics_fmu_model.fmu",
+            "step_trigger_topic": {
+                "msg_type": "aerosim::types::JsonData",
+                "topic": "aerosim.clock.tick_group_01"
+            },
             "component_input_topics": [
                 {
                     "msg_type": "aerosim::types::AircraftEffectorCommand",
@@ -287,6 +304,10 @@
         {
             "id": "primary_flight_display",
             "fmu_model_path": "examples/fmu/primary_flight_display_controller_fmu_model.fmu",
+            "step_trigger_topic": {
+                "msg_type": "aerosim::types::JsonData",
+                "topic": "aerosim.clock.tick_group_01"
+            },
             "component_input_topics": [],
             "component_output_topics": [
                 {
@@ -323,6 +344,10 @@
         {
             "id": "propeller_effector",
             "fmu_model_path": "examples/fmu/rotor_effector_fmu_model.fmu",
+            "step_trigger_topic": {
+                "msg_type": "aerosim::types::JsonData",
+                "topic": "aerosim.clock.tick_group_01"
+            },
             "component_input_topics": [],
             "component_output_topics": [
                 {

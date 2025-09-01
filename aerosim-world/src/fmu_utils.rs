@@ -1,22 +1,327 @@
 use log::{info, warn};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde_json::Value;
 
-use fmi::fmi3::instance::Common;
-use fmi::fmi3::schema::VariableType;
+use fmi::fmi3::{import::Fmi3Import, instance::Common, schema::VariableType};
+use fmi::schema::fmi3::ArrayableVariableTrait;
+use fmi::traits::{FmiImport, FmiInstance};
 
-use aerosim_data::middleware::{
-    Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, Serializer, SerializerEnum,
+use aerosim_data::{
+    middleware::{Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, Serializer, SerializerEnum},
+    types::{
+        sensor::{ADSB, GNSS, IMU},
+        AircraftEffectorCommand, AutopilotCommand, EffectorState, FlightControlCommand, JsonData,
+        PrimaryFlightDisplayData, TimeStamp, TrajectoryVisualization, TypeSupport, VehicleState,
+    },
+    AerosimMessage,
 };
-use aerosim_data::types::{
-    sensor::{ADSB, GNSS, IMU},
-    AircraftEffectorCommand, AutopilotCommand, EffectorState, FlightControlCommand, JsonData,
-    PrimaryFlightDisplayData, TimeStamp, TrajectoryVisualization, TypeSupport, VehicleState,
-};
-use aerosim_data::AerosimMessage;
 
-use crate::fmu_driver::{Fmi3ModelVarInfo, Fmi3VarInfo};
+pub const NUM_TIME_DECIMALS: u32 = 6; // round time to microsec decimal place
+pub const TIME_SEC_TOL: f64 = 1e-6;
+
+// ----------------------------------------------------------------------------
+// Fmi3VarInfo and Fmi3ModelVarInfo structs to collect all of loaded variable info
+
+pub struct Fmi3VarInfo {
+    pub fmu_var_ref: u32,
+    pub fmu_var_type: VariableType,
+    pub fmu_var_causality: fmi::fmi3::schema::Causality,
+    pub fmu_var_dim: Vec<u64>,
+    pub fmu_var_tot_dim: usize,
+}
+
+impl Clone for Fmi3VarInfo {
+    fn clone(&self) -> Self {
+        let fmu_var_ref = self.fmu_var_ref;
+        let fmu_var_type = match self.fmu_var_type {
+            VariableType::FmiFloat32 => VariableType::FmiFloat32,
+            VariableType::FmiFloat64 => VariableType::FmiFloat64,
+            VariableType::FmiInt8 => VariableType::FmiInt8,
+            VariableType::FmiUInt8 => VariableType::FmiUInt8,
+            VariableType::FmiInt16 => VariableType::FmiInt16,
+            VariableType::FmiUInt16 => VariableType::FmiUInt16,
+            VariableType::FmiInt32 => VariableType::FmiInt32,
+            VariableType::FmiUInt32 => VariableType::FmiUInt32,
+            VariableType::FmiInt64 => VariableType::FmiInt64,
+            VariableType::FmiUInt64 => VariableType::FmiUInt64,
+            VariableType::FmiBoolean => VariableType::FmiBoolean,
+            VariableType::FmiString => VariableType::FmiString,
+            VariableType::FmiBinary => VariableType::FmiBinary,
+        };
+        let fmu_var_causality = self.fmu_var_causality;
+        let fmu_var_dim = self.fmu_var_dim.clone();
+        let fmu_var_tot_dim = self.fmu_var_tot_dim;
+
+        Self {
+            fmu_var_ref,
+            fmu_var_type,
+            fmu_var_causality,
+            fmu_var_dim,
+            fmu_var_tot_dim,
+        }
+    }
+}
+
+pub struct Fmi3ModelVarInfo {
+    pub fmu_var_info: HashMap<String, Fmi3VarInfo>,
+}
+
+impl Fmi3ModelVarInfo {
+    pub fn new(fmu_id: &str, fmi3_model: &Fmi3Model) -> Self {
+        let mut fmu_var_info: HashMap<String, Fmi3VarInfo> = HashMap::new();
+        let fmu_model_desc = fmi3_model.get_fmu_instance_ref().model_description();
+
+        // Collect all of the variable value references
+        let all_fmu_var_iter = itertools::chain!(
+            fmu_model_desc
+                .model_variables
+                .float64
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .float32
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .int64
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .int32
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .int16
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .int8
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .uint64
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .uint32
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .uint16
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .uint8
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .boolean
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+            fmu_model_desc
+                .model_variables
+                .string
+                .iter()
+                .map(|v| v as &dyn ArrayableVariableTrait),
+        );
+
+        for fmu_var in all_fmu_var_iter {
+            let fmu_var_ref = fmu_var.value_reference();
+            let fmu_var_name = fmu_var.name();
+            let fmu_var_type = fmu_var.data_type();
+            let fmu_var_causality = fmu_var.causality();
+            let fmu_var_dim: Vec<u64> = fmu_var
+                .dimensions()
+                .iter()
+                .map(|d| {
+                    d.start
+                        .expect("Error: Only dimensions using 'start' value are supported.")
+                        as u64
+                })
+                .collect();
+            let fmu_var_tot_dim: usize = fmu_var_dim
+                .iter()
+                .product::<u64>()
+                .try_into()
+                .expect("Unable to convert total dimension to usize");
+
+            info!(
+                "[{}] FMU ref={} var='{}', type={}, dim={:?}, causality={:?}",
+                fmu_id,
+                fmu_var_ref,
+                fmu_var_name,
+                fmi3_var_type_to_string(&fmu_var_type),
+                fmu_var_dim,
+                fmu_var_causality
+            );
+
+            fmu_var_info.insert(
+                fmu_var_name.to_string(),
+                Fmi3VarInfo {
+                    fmu_var_ref,
+                    fmu_var_type,
+                    fmu_var_causality,
+                    fmu_var_dim,
+                    fmu_var_tot_dim,
+                },
+            );
+        }
+
+        Self { fmu_var_info }
+    }
+
+    pub fn get_fmu_var_info(&self, var_name: &str) -> Option<&Fmi3VarInfo> {
+        self.fmu_var_info.get(var_name)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Fmi3Model struct to combine Import and Instance (that has a reference to
+// the Import bindings). The Import lifetime is made static through a leaked
+// Box pointer to guarantee it outlives the instance.
+
+pub struct Fmi3Model {
+    #[allow(unused)]
+    fmu_import: Box<Fmi3Import>,
+    fmu_instance: fmi::fmi3::instance::InstanceCS<'static>,
+}
+
+impl Fmi3Model {
+    pub fn new(fmu_filename: PathBuf) -> Self {
+        // Allocate the import on the heap and leak it to get a 'static reference.
+        let fmu_import_box: Box<Fmi3Import> =
+            Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
+
+        if std::env::consts::OS == "windows" {
+            // Add extracted lib path to system path so any dependency libs can also be found and loaded
+            let archive_path = fmu_import_box.archive_path();
+            let mut shared_lib_path = fmu_import_box
+                .shared_lib_path("")
+                .expect("Unable to get FMU shared lib path.");
+            let _ = shared_lib_path.pop(); // remove blank '.dll' that shared_lib_path() adds at the end
+            let compined_lib_path: String = std::path::absolute(archive_path.join(shared_lib_path))
+                .expect("Unable to get absolute file path to extracted FMU shared libs.")
+                .to_str()
+                .unwrap_or_else(|| "")
+                .to_string();
+
+            // Join the new path entry with the existing PATH
+            let current_path = std::env::var("PATH").unwrap_or_else(|_| String::new());
+            let new_path: String = if current_path.is_empty() {
+                compined_lib_path
+            } else {
+                format!("{};{}", current_path, compined_lib_path)
+            };
+            std::env::set_var("PATH", new_path);
+        } else if std::env::consts::OS == "linux" {
+            // TODO Update the Linux path like above
+        }
+
+        let fmu_import_static: &'static Fmi3Import = Box::leak(fmu_import_box);
+
+        let fmu_instance = fmu_import_static
+            .instantiate_cs("instance1", false, true, false, false, &[])
+            .expect("Unable to instantiate FMU instance.");
+
+        // Rebuild the Box to deallocate it later.
+        let fmu_import =
+            unsafe { Box::from_raw(fmu_import_static as *const Fmi3Import as *mut Fmi3Import) };
+
+        let fmu_model_desc = fmu_import.model_description();
+
+        info!(
+            "Loaded FMU model name: {}, FMI ver: {}",
+            fmu_model_desc.model_name, fmu_model_desc.fmi_version
+        );
+
+        Self {
+            fmu_import,
+            fmu_instance,
+        }
+    }
+
+    pub fn get_fmu_instance_ref(&self) -> &fmi::fmi3::instance::InstanceCS<'static> {
+        &self.fmu_instance
+    }
+
+    pub fn get_fmu_instance_mut(&mut self) -> &mut fmi::fmi3::instance::InstanceCS<'static> {
+        &mut self.fmu_instance
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Alternative way to deal with Fmi3Model import lifetime through a raw pointer
+
+// pub struct FmiModel<'a> {
+//     fmu_import: Box<Fmi3Import>,
+//     fmu_instance: fmi::fmi3::instance::InstanceCS<'a>,
+// }
+
+// impl<'a> FmiModel<'a> {
+//     pub fn new(fmu_filename: PathBuf) -> Self {
+//         // Allocate the import on the heap.
+//         let fmu_import: Box<Fmi3Import> =
+//             Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
+
+//         // Manually extend the lifetime of the reference to match 'a through a raw pointer.
+//         let fmu_import_ref: &'a Fmi3Import =
+//             unsafe { &*(fmu_import.as_ref() as *const Fmi3Import) };
+
+//         let fmu_instance = fmu_import_ref
+//             .instantiate_cs("instance1", false, true, false, false, &[])
+//             .expect("Unable to instantiate FMU instance.");
+
+//         Self {
+//             fmu_import,
+//             fmu_instance,
+//         }
+//     }
+// }
+
+// ----------------------------------------------------------------------------
+// Alternative way to deal with Fmi3Model import lifetime using 'ouroboros' crate
+
+// #[self_referencing]
+// pub struct FmiModel {
+//     fmu_import: Rc<Fmi3Import>,
+//     #[covariant]
+//     #[borrows(fmu_import)]
+//     fmu_instance: fmi::fmi3::instance::InstanceCS<'this>,
+// }
+
+// ----------------------------------------------------------------------------
+// FMI 2.0 + 3.0 enum type placeholders to be implemented in the future
+
+// pub enum FmiImportEnum {
+//     Fmi2Import(Fmi2Import),
+//     Fmi3Import(Fmi3Import),
+// }
+
+// pub enum FmiInstanceEnum<'a> {
+//     Fmi2Instance(fmi::fmi2::instance::InstanceCS<'a>),
+//     Fmi3Instance(fmi::fmi3::instance::InstanceCS<'a>),
+// }
+
+// pub enum ModelDescriptionEnum<'a> {
+//     Fmi2ModelDescription(&'a fmi::fmi2::schema::Fmi2ModelDescription),
+//     Fmi3ModelDescription(&'a fmi::fmi3::schema::Fmi3ModelDescription),
+// }
+
+// ---------------------------------------------------------------------------
+// FMU Utility functions
 
 pub fn fmi3_var_type_to_string(var_type: &VariableType) -> String {
     return match var_type {
@@ -348,6 +653,114 @@ pub fn set_fmu3_from_json(
     // );
 }
 
+pub fn get_fmu3_f64(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<f64> {
+    let mut values: Vec<f64> = vec![0.0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_float64(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_f32(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<f32> {
+    let mut values: Vec<f32> = vec![0.0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_float32(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_i64(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<i64> {
+    let mut values: Vec<i64> = vec![0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_int64(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_i32(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<i32> {
+    let mut values: Vec<i32> = vec![0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_int32(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_i16(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<i16> {
+    let mut values: Vec<i16> = vec![0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_int16(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_i8(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<i8> {
+    let mut values: Vec<i8> = vec![0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_int8(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_u64(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<u64> {
+    let mut values: Vec<u64> = vec![0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_uint64(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_u32(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<u32> {
+    let mut values: Vec<u32> = vec![0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_uint32(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_u16(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<u16> {
+    let mut values: Vec<u16> = vec![0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_uint16(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_u8(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<u8> {
+    let mut values: Vec<u8> = vec![0; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_uint8(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_bool(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<bool> {
+    let mut values: Vec<bool> = vec![false; fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_boolean(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
+pub fn get_fmu3_string(
+    fmu_var_info: &Fmi3VarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+) -> Vec<String> {
+    let mut values: Vec<String> = vec![String::new(); fmu_var_info.fmu_var_tot_dim];
+    let _ = fmu_instance.get_string(&[fmu_var_info.fmu_var_ref], &mut values);
+    values
+}
+
 pub fn set_json_from_fmu3(
     fmu_id: &str,
     fmu_var_name: &str,
@@ -371,69 +784,18 @@ pub fn set_json_from_fmu3(
 
         // Get the FMU variable value based on its type
         let fmu_value: serde_json::Value = match fmu_var_info.fmu_var_type {
-            VariableType::FmiFloat64 => {
-                let mut values: Vec<f64> = vec![0.0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_float64(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiFloat32 => {
-                let mut values: Vec<f32> = vec![0.0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_float32(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiInt64 => {
-                let mut values: Vec<i64> = vec![0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_int64(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiInt32 => {
-                let mut values: Vec<i32> = vec![0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_int32(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiInt16 => {
-                let mut values: Vec<i16> = vec![0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_int16(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiInt8 => {
-                let mut values: Vec<i8> = vec![0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_int8(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiUInt64 => {
-                let mut values: Vec<u64> = vec![0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_uint64(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiUInt32 => {
-                let mut values: Vec<u32> = vec![0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_uint32(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiUInt16 => {
-                let mut values: Vec<u16> = vec![0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_uint16(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiUInt8 => {
-                let mut values: Vec<u8> = vec![0; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_uint8(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiBoolean => {
-                let mut values: Vec<bool> = vec![false; fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_boolean(&[fmu_var_info.fmu_var_ref], &mut values);
-                values.into()
-            }
-            VariableType::FmiString => {
-                let mut values: Vec<String> = vec![String::new(); fmu_var_info.fmu_var_tot_dim];
-                let _ = fmu_instance.get_string(&[fmu_var_info.fmu_var_ref], &mut values);
-                // Convert Vec<String> to serde_json::Value
-                serde_json::Value::Array(
-                    values.into_iter().map(serde_json::Value::String).collect(),
-                )
-            }
+            VariableType::FmiFloat64 => get_fmu3_f64(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiFloat32 => get_fmu3_f32(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiInt64 => get_fmu3_i64(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiInt32 => get_fmu3_i32(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiInt16 => get_fmu3_i16(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiInt8 => get_fmu3_i8(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiUInt64 => get_fmu3_u64(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiUInt32 => get_fmu3_u32(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiUInt16 => get_fmu3_u16(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiUInt8 => get_fmu3_u8(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiBoolean => get_fmu3_bool(fmu_var_info, fmu_instance).into(),
+            VariableType::FmiString => get_fmu3_string(fmu_var_info, fmu_instance).into(),
             _ => {
                 warn!(
                     "[{}] Unsupported FMU variable type for field '{}'.",
@@ -475,7 +837,7 @@ pub async fn publish_component_output_topics_fmu3(
     fmu_config_json: &serde_json::Value,
     fmu_model_var_info: &Fmi3ModelVarInfo,
     fmu_instance: &mut fmi::fmi3::instance::InstanceCS<'_>,
-    timestamp: TimeStamp,
+    timestamp: &TimeStamp,
     middleware: &Arc<MiddlewareEnum>,
     serializer: &SerializerEnum,
 ) {
@@ -505,7 +867,7 @@ pub async fn publish_component_output_topics_fmu3(
                     .to_string();
             }
 
-            let metadata = Metadata::new(out_topic, msg_type, Some(timestamp), None);
+            let metadata = Metadata::new(out_topic, msg_type, Some(*timestamp), None);
 
             let serialized_msg: Vec<u8> = match msg_type {
                 "aerosim::types::VehicleState" => pack_raw_aerosim_fmu_msg::<VehicleState>(
@@ -657,7 +1019,7 @@ pub async fn publish_aux_output_topics_fmu3(
     fmu_config_json: &serde_json::Value,
     fmu_model_var_info: &Fmi3ModelVarInfo,
     fmu_instance: &mut fmi::fmi3::instance::InstanceCS<'_>,
-    timestamp: TimeStamp,
+    timestamp: &TimeStamp,
     middleware: &Arc<MiddlewareEnum>,
 ) {
     // Pack and publish auxiliary output topics as JsonData
@@ -703,7 +1065,7 @@ pub async fn publish_aux_output_topics_fmu3(
             let data_msg = JsonData::new(data_value);
 
             let _ = middleware
-                .publish(out_topic, &data_msg, Some(timestamp))
+                .publish(out_topic, &data_msg, Some(*timestamp))
                 .await;
 
             // info!(

@@ -5,70 +5,75 @@
         "pace_1x_scale": true
     },
     "orchestrator": {
-        "sync_topics": [
+        "tick_groups": [
             {
-                "topic": "aerosim.actor1.vehicle_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.tiltrotor_1.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.tiltrotor_2.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.tiltrotor_3.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.tiltrotor_4.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.tiltrotor_5.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.tiltrotor_6.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.rotor_1.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.rotor_2.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.rotor_3.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.rotor_4.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.rotor_5.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.rotor_6.effector_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.actor1.primary_flight_display_data",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.intruder1.vehicle_state",
-                "interval_ms": 20
-            },
-            {
-                "topic": "aerosim.intruder1.propeller.effector_state",
-                "interval_ms": 20
+                "clock_topic": "aerosim.clock.tick_group_01",
+                "sync_topics": [
+                    {
+                        "topic": "aerosim.actor1.vehicle_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.tiltrotor_1.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.tiltrotor_2.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.tiltrotor_3.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.tiltrotor_4.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.tiltrotor_5.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.tiltrotor_6.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.rotor_1.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.rotor_2.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.rotor_3.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.rotor_4.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.rotor_5.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.rotor_6.effector_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.actor1.primary_flight_display_data",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.intruder1.vehicle_state",
+                        "interval_ms": 20
+                    },
+                    {
+                        "topic": "aerosim.intruder1.propeller.effector_state",
+                        "interval_ms": 20
+                    }
+                ]
             }
         ]
     },
@@ -520,7 +525,10 @@
         {
             "id": "evtol_vehicle",
             "fmu_model_path": "examples/fmu/evtol_vehicle_fmu.fmu",
-            "component_type": "dynamics_model",
+            "step_trigger_topic": {
+                "msg_type": "aerosim::types::JsonData",
+                "topic": "aerosim.clock.tick_group_01"
+            },
             "component_input_topics": [],
             "component_output_topics": [
                 {
@@ -1472,7 +1480,10 @@
         {
             "id": "evtol_effectors",
             "fmu_model_path": "examples/fmu/evtol_effectors_fmu_model.fmu",
-            "component_type": "dynamics_model",
+            "step_trigger_topic": {
+                "msg_type": "aerosim::types::JsonData",
+                "topic": "aerosim.clock.tick_group_01"
+            },
             "component_input_topics": [],
             "component_output_topics": [
                 {
@@ -1562,6 +1573,10 @@
         {
             "id": "trajectory_follower_intruder1",
             "fmu_model_path": "examples/fmu/trajectory_follower_fmu_model.fmu",
+            "step_trigger_topic": {
+                "msg_type": "aerosim::types::JsonData",
+                "topic": "aerosim.clock.tick_group_01"
+            },
             "component_input_topics": [],
             "component_output_topics": [
                 {
@@ -1590,6 +1605,10 @@
         {
             "id": "propeller_effector_intruder1",
             "fmu_model_path": "examples/fmu/rotor_effector_fmu_model.fmu",
+            "step_trigger_topic": {
+                "msg_type": "aerosim::types::JsonData",
+                "topic": "aerosim.clock.tick_group_01"
+            },
             "component_input_topics": [],
             "component_output_topics": [
                 {

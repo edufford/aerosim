@@ -50,6 +50,12 @@ impl TimeStamp {
         self.sec as f64 + self.nanosec as f64 * 1e-9
     }
 
+    pub fn to_sec_rounded(&self, round_num_digits: u32) -> f64 {
+        let raw_sec: f64 = self.to_sec();
+        let multiplier = 10.0_f64.powi(round_num_digits as i32);
+        (raw_sec * multiplier).round() / multiplier
+    }
+
     #[staticmethod]
     pub fn from_millis(millisec: u64) -> Self {
         let dur = Duration::from_millis(millisec);

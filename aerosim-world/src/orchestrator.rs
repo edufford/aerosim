@@ -25,7 +25,9 @@ use crate::{
     sim_clock::SimClock,
 };
 use aerosim_data::{
-    middleware::{Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry, Serializer},
+    middleware::{
+        Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry, Serializer,
+    },
     types::{JsonData, TimeStamp},
 };
 
@@ -306,22 +308,50 @@ impl Orchestrator {
         let runtime = self.runtime.take().expect("Tokio runtime not initialized");
 
         // Initialize communication channel between sync topics subscriber and the orchestrator.
-        let (tx_msg, rx_msg) = mpsc::channel::<(TimeStamp, String)>();
+        let (tx_msg, rx_msg) = mpsc::channel::<(TimeStamp, Metadata)>();
 
-        // Process sync topic data from sim config
-        let mut sync_topic_data: Vec<(String, TimeStamp)> = vec![];
-        for sync_topic_dict in sim_config["orchestrator"]["sync_topics"]
-            .as_array()
-            .unwrap()
+        // Process tick group data from sim config
+        // tick_group_data is Vec of tuples ("clock_topic", Vec of tuples ("topic", interval TimeStamp))
+        let mut tick_group_data: Vec<(String, Vec<(String, TimeStamp)>)> = vec![];
+        for (idx, tick_group_array) in sim_config
+            .pointer("/orchestrator/tick_groups")
+            .and_then(|v| v.as_array())
+            .expect("Unable to parse 'tick_groups' as array.")
+            .iter()
+            .enumerate()
         {
-            if let Some(topic_str) = sync_topic_dict["topic"].as_str() {
-                let interval: TimeStamp = match sync_topic_dict["interval_ms"].as_u64() {
-                    Some(interval_ms) => TimeStamp::from_millis(interval_ms),
-                    None => TimeStamp::new(0, 0),
-                };
-                sync_topic_data.push((topic_str.to_string(), interval));
+            let tick_group_obj = tick_group_array
+                .as_object()
+                .expect("Unable to parse 'tick_group' entry as a JSON object.");
+            let clock_topic = tick_group_obj
+                .get("clock_topic")
+                .and_then(|v| v.as_str())
+                .expect("Unable to parse 'clock_topic' as a string in tick group config.");
+            let sync_topics = tick_group_obj
+                .get("sync_topics")
+                .expect("Unable to find 'sync_topics' in tick group config.");
+
+            let mut sync_topic_data: Vec<(String, TimeStamp)> = vec![];
+            for sync_topic_dict in sync_topics
+                .as_array()
+                .expect("Unable to parse 'sync_topics' as a JSON array.")
+            {
+                if let Some(topic_str) = sync_topic_dict["topic"].as_str() {
+                    let interval: TimeStamp = match sync_topic_dict["interval_ms"].as_u64() {
+                        Some(interval_ms) => TimeStamp::from_millis(interval_ms),
+                        None => TimeStamp::new(0, 0),
+                    };
+                    sync_topic_data.push((topic_str.to_string(), interval));
+                }
             }
+
+            info!(
+                "Tick group index {} added with clock_topic: '{}', sync_topics: {:?}",
+                idx, clock_topic, sync_topic_data
+            );
+            tick_group_data.push((clock_topic.to_string(), sync_topic_data));
         }
+        info!("Processed {} tick groups.", tick_group_data.len());
 
         // Retrieve all topics from sim config.
         let mut all_topics: HashSet<(String, String)> = HashSet::new();
@@ -478,7 +508,7 @@ impl Orchestrator {
 
                 // Send all received topics to the channel so the orchestrator's main thread
                 // can monitor incoming data and iterate accordingly.
-                let _ = tx_msg.send((timestamp, metadata.topic));
+                let _ = tx_msg.send((timestamp, metadata));
 
                 Ok(())
             })
@@ -500,7 +530,7 @@ impl Orchestrator {
                 rx_stop,
                 rx_msg,
                 sim_config,
-                sync_topic_data,
+                tick_group_data,
                 simclock,
                 data_manager,
                 middleware,
@@ -541,16 +571,16 @@ impl Orchestrator {
 impl Orchestrator {
     async fn orchestrator_main(
         rx_stop: Receiver<bool>,
-        rx_msg: Receiver<(TimeStamp, String)>,
+        rx_msg: Receiver<(TimeStamp, Metadata)>,
         sim_config: serde_json::Value,
-        sync_topic_data: Vec<(String, TimeStamp)>,
+        tick_group_data: Vec<(String, Vec<(String, TimeStamp)>)>,
         simclock: Arc<SimClock>,
         data_manager: Arc<DataManager>,
         middleware: Arc<MiddlewareEnum>,
         scene_graph_data_queue: Arc<Mutex<Vec<(TimeStamp, String, SceneGraphStateData)>>>,
     ) {
         info!("Orchestrator main thread started.");
-        let mut sim_time = simclock.sim_time().unwrap_or(TimeStamp::new(0, 0));
+        let mut sim_time: TimeStamp;
         let mut running = true;
 
         let required_renderers: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
@@ -709,8 +739,13 @@ impl Orchestrator {
         {
             let start_time = std::time::Instant::now();
             let timeout_initial_sync_topics = Duration::from_secs(60);
-            let mut sync_topics_set =
-                Orchestrator::get_sync_topics_for_simtime(&sync_topic_data, sim_time);
+            let mut sync_topics_set: HashSet<String> = HashSet::new();
+            for (_clock_topic, sync_topic_data) in &tick_group_data {
+                for (topic, _interval) in sync_topic_data {
+                    // Add all sync_topics for initial sync topic set, regardless of their intervals
+                    sync_topics_set.insert(topic.to_string());
+                }
+            }
             let mut notify_at_sec = 5;
             info!(
                 "Waiting to receive initial sync topics: {:?}",
@@ -756,6 +791,8 @@ impl Orchestrator {
         while running {
             // info!("Orchestrator thread tick.");
             let actual_time_start = tokio::time::Instant::now();
+            debug!("");
+            debug!("Tick start.");
 
             // Step sim clock
             sim_time = simclock.step();
@@ -772,7 +809,6 @@ impl Orchestrator {
                         "sec": now_platform.sec,
                         "nanosec": now_platform.nanosec
                     },
-                    "tick_group": 1  // TODO implement tick groups
                 }));
                 match middleware
                     .publish::<JsonData>("aerosim.clock", &sim_time_json, Some(sim_time))
@@ -788,19 +824,46 @@ impl Orchestrator {
                 );
             }
 
-            // Wait to receive a published message from each of sync_topics before advancing.
+            // Wait for each tick group's sync topics in tick group index order
             {
-                let mut sync_topics_set =
-                    Orchestrator::get_sync_topics_for_simtime(&sync_topic_data, sim_time);
-                // debug!("Waiting to receive sync topics: {:?}", sync_topics_set);
-                while running {
-                    running = Orchestrator::poll_messages(&mut sync_topics_set, &rx_msg, &rx_stop);
-
-                    if sync_topics_set.is_empty() {
-                        break;
+                for (idx, (clock_topic, sync_topic_data)) in tick_group_data.iter().enumerate() {
+                    // Publish this tick group's clock topic
+                    let clock_topic_json = JsonData::new(json!({
+                        "timestamp_sim": {
+                            "sec": sim_time.sec,
+                            "nanosec": sim_time.nanosec
+                        },
+                    }));
+                    match middleware
+                        .publish::<JsonData>(clock_topic, &clock_topic_json, Some(sim_time))
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) => warn!("Could not publish '{}': {:?}", clock_topic, e),
                     }
+                    debug!(
+                        "--- Published tick group index {} clock topic: '{}' ---",
+                        idx, clock_topic
+                    );
+
+                    // Wait to receive a published message from each of sync_topics before advancing.
+                    let mut sync_topics_set =
+                        Orchestrator::get_sync_topics_for_simtime(&sync_topic_data, sim_time);
+
+                    debug!(
+                        "Waiting to receive tick group index {} sync topics: {:?}",
+                        idx, sync_topics_set
+                    );
+                    while running {
+                        running =
+                            Orchestrator::poll_messages(&mut sync_topics_set, &rx_msg, &rx_stop);
+
+                        if sync_topics_set.is_empty() {
+                            break;
+                        }
+                    }
+                    debug!("Received all tick group sync topic messages.");
                 }
-                // debug!("Received all sync topic messages.");
             }
 
             // Update scene graph
@@ -839,16 +902,27 @@ impl Orchestrator {
                 );
             } else if simclock.pace_1x_scale && actual_time_elapsed < simclock.step_size {
                 // Sleep for the remaining actual step time duration
+                // TODO Look into using 'spin_sleep' crate for this
                 let time_to_sleep = simclock.step_size - actual_time_elapsed;
-                // info!(
-                //     "Sleeping for {} ms",
-                //     time_to_sleep.as_millis()
-                // );
+                // debug!("Sleeping for {} ms", time_to_sleep.as_millis());
                 let wait_time = std::time::SystemTime::now();
                 while wait_time.elapsed().unwrap() < time_to_sleep {
-                    tokio::time::sleep(Duration::ZERO).await; // on Windows, sleep() for >0 is not accurate
+                    // Yield instead of sleeping since even sleep(zero) can take
+                    // multiple milliseconds on Windows
+                    tokio::task::yield_now().await;
                 }
+                // debug!(
+                //     "Sleep actual-target: {} ms",
+                //     wait_time.elapsed().unwrap().as_millis() - time_to_sleep.as_millis()
+                // );
             }
+
+            let total_tick_time_ms = actual_time_start.elapsed().as_micros() as f64 / 1000.0;
+            debug!(
+                "Tick end: processing time = {:.1} ms, total time = {:.1} ms",
+                actual_time_elapsed.as_secs_f64() * 1000.0,
+                total_tick_time_ms
+            );
         } // end of main running loop
 
         // Orchestrator main thread is stopping
@@ -903,7 +977,7 @@ impl Orchestrator {
 
     fn poll_messages(
         sync_topics: &mut HashSet<String>,
-        rx_msg: &Receiver<(TimeStamp, String)>,
+        rx_msg: &Receiver<(TimeStamp, Metadata)>,
         rx_stop: &Receiver<bool>,
     ) -> bool {
         let mut keep_running = true;
@@ -915,10 +989,16 @@ impl Orchestrator {
         match rx_msg.try_recv() {
             Ok(msg) => {
                 let _timestamp = msg.0;
-                let topic = msg.1;
+                let metadata = msg.1;
 
                 // Process sync topics
-                let _was_removed = sync_topics.remove(&topic);
+                let was_removed = sync_topics.remove(&metadata.topic);
+                if was_removed {
+                    debug!(
+                        "Received sync topic: '{}' with timestamp_sim: {:?}",
+                        metadata.topic, metadata.timestamp_sim
+                    );
+                }
             }
             Err(TryRecvError::Disconnected) => {
                 keep_running = false;
