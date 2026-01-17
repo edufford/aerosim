@@ -120,7 +120,7 @@ impl FmuDriver {
                         middleware.clone(),
                         &fmu_id,
                         &working_dir,
-                    ))
+                    ));
                 })
                 .expect("Unable to spawn FMU Driver thread"),
         );
@@ -134,29 +134,34 @@ impl FmuDriver {
     }
 
     fn stop(&mut self) {
-        info!("[{}] Stopping FMU Driver thread.", self.fmu_id);
+        info!("[{}] Stopping FMU Driver.", self.fmu_id);
 
-        // Stop thread
-        match self.fmu_driver_thread_tx_stop.take() {
-            Some(tx_stop) => match tx_stop.send(true) {
-                Ok(_) => {}
-                Err(e) => {
-                    warn!("Could not send stop flag to FMU Driver thread: {:?}", e);
+        // Send stop flag to thread (may fail if thread already exited via orchestrator command)
+        if let Some(tx_stop) = self.fmu_driver_thread_tx_stop.take() {
+            let _ = tx_stop.send(true);
+        }
+
+        // Wait for thread to finish
+        if let Some(handle) = self.fmu_driver_thread_handle.take() {
+            let start = std::time::Instant::now();
+            loop {
+                if handle.is_finished() {
+                    let _ = handle.join();
+                    break;
                 }
-            },
-            None => {
-                return;
+                if start.elapsed().as_secs() >= 30 {
+                    error!(
+                        "[{}] Thread join timed out after 30s - abandoning join!",
+                        self.fmu_id
+                    );
+                    std::mem::forget(handle);
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
         }
 
-        let handle = self
-            .fmu_driver_thread_handle
-            .take()
-            .expect("No FMU Driver thread handle, was it started?");
-
-        handle
-            .join()
-            .expect("Thread should have stopped after receiving stop flag.");
+        info!("[{}] FMU Driver stopped.", self.fmu_id);
     }
 }
 

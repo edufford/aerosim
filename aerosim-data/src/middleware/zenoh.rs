@@ -67,6 +67,7 @@ impl MiddlewareRaw for ZenohMiddleware {
 
         session
             .put(topic, payload)
+            .congestion_control(zenoh::qos::CongestionControl::Block)
             .await
             .expect("Failed to publish message");
 
