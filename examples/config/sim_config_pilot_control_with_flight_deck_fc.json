@@ -1,5 +1,6 @@
 {
     "description": "Example of human pilot-in-the-loop simulation of flying an airplane with manual keyboard/joystick controls.",
+    "middleware_type": "zenoh",
     "clock": {
         "step_size_ms": 20,
         "pace_1x_scale": true

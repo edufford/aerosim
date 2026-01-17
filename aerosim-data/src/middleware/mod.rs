@@ -15,29 +15,35 @@ use serde::{Deserialize, Serialize};
 use crate::types::{AerosimMessage, PyTypeSupport, TimeStamp, TypeRegistry};
 
 pub mod common;
+pub mod no_middleware;
 pub mod serializers;
-
-#[cfg(feature = "dds")]
-pub mod dds;
-#[cfg(feature = "kafka")]
-pub mod kafka;
-#[cfg(feature = "zenoh")]
-pub mod zenoh;
 
 use common::message;
 pub use common::{Message, Metadata};
 
+use crate::middleware::no_middleware::{NoMiddleware, NoSerializer};
 pub use aerosim_macros::AerosimDeserializeEnum;
 pub use serializers::bincode::BincodeSerializer;
 
 #[cfg(feature = "dds")]
+pub mod dds;
+#[cfg(feature = "dds")]
 pub use dds::{DDSMiddleware, DDSSerializer};
+
+#[cfg(feature = "kafka")]
+pub mod kafka;
 #[cfg(feature = "kafka")]
 pub use kafka::{KafkaMiddleware, KafkaSerializer};
+
+#[cfg(feature = "zenoh")]
+pub mod zenoh;
 #[cfg(feature = "zenoh")]
 pub use zenoh::{ZenohMiddleware, ZenohSerializer};
 
+// CallbackClosureRaw can be created as: Box::new(move |payload: &[u8]| { ... })
 pub type CallbackClosureRaw = Box<dyn Fn(&[u8]) -> Result<(), Box<dyn Error>> + Send + Sync>;
+
+// CallbackClosure can be created as: Box::new(move |data, metadata| { ... })
 pub type CallbackClosure<T> = Box<dyn Fn(T, Metadata) -> Result<(), Box<dyn Error>> + Send + Sync>;
 
 #[enum_dispatch(SerializerEnum)]
@@ -172,23 +178,36 @@ pub trait PySerializer: Serializer {
 #[async_trait]
 #[enum_dispatch(MiddlewareEnum)]
 pub trait MiddlewareRaw: Send + Sync {
+    // Publish data of any type as a raw [u8] byte array with the
+    // message_type specified as a string
     async fn publish_raw(
         &self,
         message_type: &str,
         topic: &str,
         payload: &[u8],
     ) -> Result<(), Box<dyn Error>>;
+
+    // Subscribe to data of any type with a single callback to process it
+    // as a raw [u8] byte array payload that can be deserialized based on
+    // the message_type string by using the transport's serializer.
     async fn subscribe_raw(
         &self,
         message_type: &str,
         topic: &str,
         callback: CallbackClosureRaw,
     ) -> Result<(), Box<dyn Error>>;
+
+    // Subscribe to multiple topics of any types with a single callback to
+    // process them as raw [u8] byte array payloads that can be deserialized
+    // based on their message_type string for each topic by using the
+    // transport's serializer.
     async fn subscribe_all_raw(
         &self,
         topics: Vec<(String, String)>,
         callback: CallbackClosureRaw,
     ) -> Result<(), Box<dyn Error>>;
+
+    // TODO Implement graceful shutdown of middleware connections
     fn shutdown_raw(&self) {}
 }
 
@@ -197,6 +216,9 @@ pub trait MiddlewareRaw: Send + Sync {
 pub trait Middleware: MiddlewareRaw {
     fn get_serializer(&self) -> SerializerEnum;
 
+    // Publish a concrete data type message, ex. publish::<JsonData>() with an
+    // optionally provided sim timestamp. If timestamp_sim is None, then it
+    // will be set as SENTINAL_SECONDS in the message metadata.
     async fn publish<T: AerosimMessage + 'static>(
         &self,
         topic: &str,
@@ -219,6 +241,8 @@ pub trait Middleware: MiddlewareRaw {
         self.publish_raw(&T::get_type_name(), topic, &payload).await
     }
 
+    // Subscribe to a concrete data type message, ex. subscribe::<JsonData>() with
+    // a callback to process the deserialized data of that type.
     async fn subscribe<T: AerosimMessage + 'static>(
         &self,
         topic: &str,
@@ -236,6 +260,8 @@ pub trait Middleware: MiddlewareRaw {
             .await
     }
 
+    // Subscribe to multiple messages of the same concrete data type, ex. subscribe_all::<JsonData>()
+    // with a common callback to process the deserialized data for each topic.
     async fn subscribe_all<T: AerosimMessage + 'static>(
         &self,
         topics: Vec<String>,
@@ -436,6 +462,7 @@ trait PyMiddleware: Middleware {
 
 #[enum_dispatch]
 pub enum MiddlewareEnum {
+    NoMiddleware,
     #[cfg(feature = "dds")]
     DDSMiddleware,
     #[cfg(feature = "kafka")]
@@ -446,6 +473,7 @@ pub enum MiddlewareEnum {
 
 #[enum_dispatch]
 pub enum SerializerEnum {
+    NoSerializer,
     BincodeSerializer,
     #[cfg(feature = "dds")]
     DDSSerializer,

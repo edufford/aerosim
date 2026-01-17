@@ -11,7 +11,7 @@ name = "aerosim_core"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-aerosim-data = { path = "../aerosim-data" }
+aerosim-data = { path = "../aerosim-data", default-features = false }
 chrono.workspace = true
 log.workspace = true
 pyo3.workspace = true

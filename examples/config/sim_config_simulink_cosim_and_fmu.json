@@ -1,5 +1,6 @@
 {
     "description": "Simulink co-simulation controller model with a simple 1DOF dynamics model FMU that was exported from another Simulink model.",
+    "middleware_type": "zenoh",
     "clock": {
         "step_size_ms": 20,
         "pace_1x_scale": true

@@ -145,11 +145,25 @@ impl Orchestrator {
         }
 
         // Load middleware
-        self.middleware = MiddlewareRegistry::new().get("zenoh");
+        let middleware_type = match self.sim_config["middleware_type"].as_str() {
+            Some("kafka") => "kafka",
+            Some("zenoh") => "zenoh",
+            Some(&_) => {
+                warn!("Invalid 'middleware_type' in config. Using default 'zenoh'.");
+                "zenoh"
+            }
+            None => {
+                warn!("No 'middleware_type' found in config. Using default 'zenoh'.");
+                "zenoh"
+            }
+        };
+
+        self.middleware = MiddlewareRegistry::new().get(middleware_type);
         let middleware = self
             .middleware
             .as_ref()
             .expect("Couldn't initialize middleware");
+        info!("Loaded {} middleware.", middleware_type);
 
         // Set up set of required renderers and subscribe to renderer status topic to
         // wait for acknowledgement of renderer readiness before finishing load command

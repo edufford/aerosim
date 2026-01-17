@@ -37,7 +37,7 @@ class AeroSim:
         self.websocket_tasks = []
         self.is_sim_started = False
         self.simclock_msg = None
-        self.transport = middleware.get_transport("zenoh")
+        self.transport = None
 
     def run(
         self,
@@ -59,6 +59,25 @@ class AeroSim:
         print(f"Loading simulation configuration from {sim_config_path}...")
         with open(sim_config_path, "r") as file:
             self.sim_config_json = json.load(file)
+
+        # ----------------------------------------------
+        # Set up middleware transport
+        valid_middleware = ["kafka", "zenoh"]
+        if "middleware_type" not in self.sim_config_json:
+            print(
+                "WARNING: Couldn't find 'middleware_type' in sim config. Using default type as 'zenoh'."
+            )
+            middleware_type = "zenoh"
+        elif self.sim_config_json["middleware_type"] not in valid_middleware:
+            print(
+                f"WARNING: Invalid 'middleware_type' value in config: {self.sim_config_json['middleware_type']}. Using default type as 'zenoh'."
+            )
+            middleware_type = "zenoh"
+        else:
+            middleware_type = self.sim_config_json["middleware_type"]
+
+        self.transport = middleware.get_transport(middleware_type)
+        print(f"Loaded {middleware_type} middleware.")
 
         # ----------------------------------------------
         # Initialize AeroSim components
@@ -87,11 +106,15 @@ class AeroSim:
             print(f"Initializing AeroSim FMU Driver '{fmu_config['id']}'...")
             if fmu_driver_type == "python":
                 self.aerosim_fmudrivers.append(
-                    aerosim_world.PyFmuDriver(fmu_config["id"], sim_config_dir, "zenoh")
+                    aerosim_world.PyFmuDriver(
+                        fmu_config["id"], sim_config_dir, middleware_type
+                    )
                 )
             else:
                 self.aerosim_fmudrivers.append(
-                    aerosim_world.FmuDriver(fmu_config["id"], sim_config_dir, "zenoh")
+                    aerosim_world.FmuDriver(
+                        fmu_config["id"], sim_config_dir, middleware_type
+                    )
                 )
 
         # ----------------------------------------------

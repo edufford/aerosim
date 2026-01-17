@@ -34,7 +34,16 @@ class PyFmuDriver:
         self._running = True
         self._processing_callback_lock = threading.Lock()
 
-        self.transport = middleware.get_transport("zenoh")
+        valid_middleware = ["kafka", "zenoh"]
+        if middleware_type not in valid_middleware:
+            print(
+                f"{self.fmudriver_name} WARNING: Invalid 'middleware' parameter: {middleware_type}. Using default type as 'zenoh'."
+            )
+            middleware_type = "zenoh"
+
+        self.transport = middleware.get_transport(middleware_type)
+        print(f"{self.fmudriver_name} Loaded {middleware_type} middleware.")
+
         self.serializer = self.transport.get_serializer()
 
         self.transport.subscribe(
