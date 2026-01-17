@@ -191,6 +191,10 @@ class AeroSim:
         if self.aerosim_orchestrator:
             self.aerosim_orchestrator.stop()
 
+        # Brief delay for the orchestrator's stop command to be delivered and processed
+        # by all FMU drivers via Zenoh before calling stop() on each driver.
+        time.sleep(0.5)
+
         for fmu_driver in self.aerosim_fmudrivers:
             fmu_driver.stop()
 

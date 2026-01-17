@@ -955,9 +955,11 @@ impl Orchestrator {
             )
             .await
         {
-            Ok(_) => {}
+            Ok(_) => {
+                info!("Published stop command.");
+            }
             Err(e) => warn!(
-                "Could not pusblish `aerosim.orchestrator.commands`: {:?}",
+                "Could not publish `aerosim.orchestrator.commands`: {:?}",
                 e
             ),
         };
