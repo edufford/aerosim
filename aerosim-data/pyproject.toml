@@ -9,6 +9,7 @@ dependencies = [
     # "maturin[patchelf]>=1.7.4",
     "maturin>=1.7.4",
     "pip>=24.2",
+    "cmake>=4.2.0"  # needed to support VS 2026 toolchain
 ]
 readme = "README.md"
 requires-python = ">= 3.12"
