@@ -415,6 +415,8 @@ class DAAScenario:
             # Clean up
             if self.aerosim:
                 self.aerosim.stop()
+            if self.transport:
+                self.transport.close()
             logger.info("Simulation stopped")
 
 

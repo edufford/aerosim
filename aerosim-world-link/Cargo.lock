@@ -44,6 +44,7 @@ dependencies = [
  "enum_dispatch",
  "futures",
  "futures-util",
+ "log",
  "pyo3",
  "pythonize",
  "rdkafka",

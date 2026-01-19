@@ -1,10 +1,12 @@
 use std::{error::Error, sync::Arc};
 
 use async_trait::async_trait;
+use log::{error, info};
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use tokio::task;
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 use crate::{
     middleware::{
@@ -35,6 +37,7 @@ impl Serializer for ZenohSerializer {
 pub struct ZenohMiddleware {
     session: tokio::sync::OnceCell<zenoh::Session>,
     runtime: Arc<tokio::runtime::Runtime>,
+    subscriber_handles: Arc<Mutex<Vec<JoinHandle<()>>>>,
 }
 
 impl ZenohMiddleware {
@@ -44,7 +47,37 @@ impl ZenohMiddleware {
             runtime: Arc::new(
                 tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"),
             ),
+            subscriber_handles: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    /// Shutdown the Zenoh middleware, cancelling all subscriber tasks and closing the session.
+    pub fn shutdown(&self) {
+        // Cancel all subscriber tasks
+        let handles = self.subscriber_handles.clone();
+        let session = self.session.get().cloned();
+
+        self.runtime.block_on(async {
+            let mut handles_lock = handles.lock().await;
+            let num_handles = handles_lock.len();
+            for handle in handles_lock.drain(..) {
+                handle.abort();
+            }
+
+            // Close the session if it was initialized
+            if let Some(sess) = session {
+                if let Err(e) = sess.close().await {
+                    error!("Error closing Zenoh session: {:?}", e);
+                }
+            }
+
+            if num_handles > 0 {
+                info!(
+                    "ZenohMiddleware: Shutdown complete ({} subscriber tasks cancelled)",
+                    num_handles
+                );
+            }
+        });
     }
 }
 
@@ -91,11 +124,14 @@ impl MiddlewareRaw for ZenohMiddleware {
 
         let subscriber = session.declare_subscriber(topic).await.unwrap();
 
-        task::spawn(async move {
+        let handle = tokio::task::spawn(async move {
             while let Ok(sample) = subscriber.recv_async().await {
                 let _ = callback(&sample.payload().to_bytes());
             }
         });
+
+        // Track the subscriber handle for cleanup
+        self.subscriber_handles.lock().await.push(handle);
 
         Ok(())
     }
@@ -119,11 +155,14 @@ impl MiddlewareRaw for ZenohMiddleware {
         for (_message_type, topic) in topics {
             let subscriber = session.declare_subscriber(&topic).await.unwrap();
             let callback_clone = Arc::clone(&callback_arc);
-            task::spawn(async move {
+            let handle = tokio::task::spawn(async move {
                 while let Ok(sample) = subscriber.recv_async().await {
                     let _ = callback_clone(&sample.payload().to_bytes());
                 }
             });
+
+            // Track the subscriber handle for cleanup
+            self.subscriber_handles.lock().await.push(handle);
         }
 
         Ok(())
@@ -144,6 +183,13 @@ impl ZenohMiddleware {
     #[new]
     fn pynew(_py: Python) -> PyResult<Self> {
         Ok(Self::new())
+    }
+
+    /// Close the Zenoh middleware, cancelling all subscriber tasks and closing the session.
+    /// This should be called before the Python process exits to ensure clean shutdown.
+    #[pyo3(name = "close")]
+    fn pyclose(&self) {
+        self.shutdown();
     }
 
     #[pyo3(name = "publish")]
