@@ -32,6 +32,15 @@ class BaseMiddleware(metaclass=Singleton):
     def get_serializer(self):
         return self._serializer
 
+    def close(self):
+        """Close the middleware connection and clean up resources.
+
+        This should be called before the Python process exits to ensure
+        clean shutdown of subscriber tasks and connections.
+        """
+        if hasattr(self._transport, 'close'):
+            self._transport.close()
+
     def publish_raw(self, message_type, topic, payload):
         self._transport.publish_raw(message_type, topic, payload)
 

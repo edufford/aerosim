@@ -203,6 +203,10 @@ class AeroSim:
             if not task.done():
                 task.cancel()
 
+        # Close the middleware transport to clean up subscriber tasks and connections
+        if self.transport:
+            self.transport.close()
+
         print("AeroSim simulation stopped.")
 
     def on_sim_clock_step(self, data, _) -> None:
