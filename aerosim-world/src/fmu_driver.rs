@@ -133,7 +133,7 @@ impl FmuDriver {
         Ok(())
     }
 
-    fn stop(&mut self) {
+    fn stop(&mut self, py: Python<'_>) {
         info!("[{}] Stopping FMU Driver.", self.fmu_id);
 
         // Send stop flag to thread (may fail if thread already exited via orchestrator command)
@@ -142,23 +142,29 @@ impl FmuDriver {
         }
 
         // Wait for thread to finish
+        // IMPORTANT: We must release the Python GIL while waiting, otherwise the FMU driver
+        // thread will deadlock when it tries to call into Python (via fmi3Terminate/fmi3FreeInstance)
+        // to terminate a pythonfmu3-built FMU model since those calls need to acquire the GIL
+        // via PyGILState_Ensure().
         if let Some(handle) = self.fmu_driver_thread_handle.take() {
-            let start = std::time::Instant::now();
-            loop {
-                if handle.is_finished() {
-                    let _ = handle.join();
-                    break;
+            py.allow_threads(|| {
+                let start = std::time::Instant::now();
+                loop {
+                    if handle.is_finished() {
+                        let _ = handle.join();
+                        break;
+                    }
+                    if start.elapsed().as_secs() >= 30 {
+                        error!(
+                            "[{}] Thread join timed out after 30s - abandoning join!",
+                            self.fmu_id
+                        );
+                        std::mem::forget(handle);
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
-                if start.elapsed().as_secs() >= 30 {
-                    error!(
-                        "[{}] Thread join timed out after 30s - abandoning join!",
-                        self.fmu_id
-                    );
-                    std::mem::forget(handle);
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
+            });
         }
 
         info!("[{}] FMU Driver stopped.", self.fmu_id);
@@ -267,6 +273,15 @@ impl FmuDriver {
         }
 
         // FMU Driver main thread is stopping
+        info!("[{}] FMU Driver main thread is stopping...", fmu_id);
+
+        // Terminate and drop the FMU model. We call terminate() first per the FMI spec
+        // to properly transition to the Terminated state before calling fmi3FreeInstance
+        // when it is dropped.
+        if let Some(mut model) = fmu_model.take() {
+            info!("[{}] Terminating the FMU model...", fmu_id);
+            model.terminate();
+        }
 
         info!("[{}] FMU Driver main thread stopped.", fmu_id);
     }
@@ -593,9 +608,8 @@ impl FmuDriver {
         metadata: Metadata,
         tx_orchestrator_msg: &Sender<(JsonData, Metadata)>,
     ) {
-        tx_orchestrator_msg
-            .send((payload, metadata))
-            .expect("Unable to send orchestrator msg data to FMU Driver thread.");
+        // Use send - if receiver is dropped, this will return an error which we ignore
+        let _ = tx_orchestrator_msg.send((payload, metadata));
     }
 
     // Function for processing orchestrator command messages to load the
@@ -805,9 +819,8 @@ impl FmuDriver {
     // Callback function for receiving the messages to trigger FMU steps (passes them to FMU driver's
     // main thread loop)
     fn receive_step_trigger_message(metadata: Metadata, tx_step_msg: &Sender<Metadata>) {
-        tx_step_msg
-            .send(metadata)
-            .expect("Unable to send step trigger msg to FMU Driver thread.");
+        // Use send - if receiver is dropped, this will return an error which we ignore
+        let _ = tx_step_msg.send(metadata);
     }
 
     // Function for processing the received messages to trigger FMU steps (run on the FMU driver's

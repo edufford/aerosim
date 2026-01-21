@@ -260,6 +260,12 @@ impl Fmi3Model {
     pub fn get_fmu_instance_mut(&mut self) -> &mut fmi::fmi3::instance::InstanceCS<'static> {
         &mut self.fmu_instance
     }
+
+    /// Terminate the FMU instance. This should be called before dropping the model
+    /// to properly clean up resources and avoid blocking during fmi3FreeInstance.
+    pub fn terminate(&mut self) {
+        let _ = Common::terminate(&mut self.fmu_instance);
+    }
 }
 
 // ----------------------------------------------------------------------------
