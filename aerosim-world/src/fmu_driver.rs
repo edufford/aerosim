@@ -11,7 +11,7 @@ use pyo3::prelude::*;
 use serde_json::Value;
 
 use fmi::fmi2::import::Fmi2Import;
-use fmi::fmi3::{instance::CoSimulation, schema::Causality};
+use fmi::fmi3::{CoSimulation, schema::Causality};
 use fmi::schema::traits::FmiModelDescription;
 use fmi::traits::FmiInstance;
 
