@@ -5,7 +5,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bincode;
 use futures_util::StreamExt;
 use pyo3::prelude::*;
 use rdkafka::{

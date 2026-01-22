@@ -287,6 +287,7 @@ pub trait Middleware: MiddlewareRaw {
     }
 }
 
+#[allow(dead_code)]
 trait PyMiddleware: Middleware {
     async fn pypublish_impl(
         &self,
