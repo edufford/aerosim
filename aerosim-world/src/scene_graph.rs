@@ -49,6 +49,7 @@ pub struct SceneGraph {
     // entity_effector_state_topic_map is a map of "topic" -> ("entity_name", effector_idx)
     entity_effector_state_topic_map: HashMap<String, (String, usize)>,
     origin_lla: (f64, f64, f64),
+    #[allow(dead_code)]
     rotate_bevy_to_ned: bevy_math::Quat,
     rotate_ned_to_bevy: bevy_math::Quat,
 }
@@ -74,6 +75,7 @@ impl SceneGraph {
         }
     }
 
+    #[allow(dead_code)]
     fn bevy_xyz_to_ned(&self, bevy_point: bevy_math::Vec3) -> bevy_math::Vec3 {
         let xform = bevy_transform::components::Transform::from_rotation(self.rotate_bevy_to_ned);
         xform.transform_point(bevy_point)
@@ -94,6 +96,7 @@ impl SceneGraph {
         bevy_q
     }
 
+    #[allow(dead_code)]
     fn bevy_quat_to_ned_quat(&self, bevy_quat: bevy_math::Quat) -> bevy_math::Quat {
         let (yaw, pitch, roll) = bevy_quat.to_euler(bevy_math::EulerRot::default());
         let ned_q = bevy_math::Quat::from_euler(bevy_math::EulerRot::ZYXEx, -roll, pitch, -yaw);

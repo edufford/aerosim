@@ -8,14 +8,13 @@ use log::{info, warn};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::mpsc::error::TryRecvError;
-use uuid::Uuid;
 
 use aerosim_data::{
     middleware::{
         BincodeSerializer, Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry,
         Serializer,
     },
-    types::{CompressedImage, Image, JsonData, TimeStamp},
+    types::{CompressedImage, Image, JsonData},
     AerosimMessage,
 };
 
@@ -23,6 +22,7 @@ use aerosim_data::{
 struct RendererConfig {
     #[serde(rename = "renderer_id")]
     instance_id: String,
+    #[allow(dead_code)]
     role: String,
     sensors: Vec<String>,
 }
@@ -199,7 +199,7 @@ impl MessageHandler {
     pub fn stop(&mut self) -> Result<(), ()> {
         info!("[aerosim.renderer.message_handler] Stopping message handler.");
 
-        self.tx_stop.blocking_send(true);
+        let _ = self.tx_stop.blocking_send(true);
         let handle = self
             .thread_handle
             .take()
@@ -341,14 +341,14 @@ async fn message_handler_main(
             Ok((topic, image)) => {
                 // TODO: Properly pass `timestamp_sim` and `timestamp_platform` from the renderer.
                 let metadata = Metadata::new(&topic, &CompressedImage::get_type_name(), None, None);
-                let compressed_image = match image.compress() {
+                match image.compress() {
                     Ok(compressed_image) => {
                         // The Kafka middleware defaults to a JSON serializer. A Bincode serializer is used
                         // here to improve encoding and decoding performance, handled through the middleware's raw API.
                         let serializer = BincodeSerializer {};
                         match serializer.serialize_message(&metadata, &compressed_image) {
                             Some(payload) => {
-                                transport
+                                let _ = transport
                                     .publish_raw(
                                         &CompressedImage::get_type_name(),
                                         &topic,
@@ -360,7 +360,7 @@ async fn message_handler_main(
                         }
                     }
                     Err(_) => eprintln!("Could not compress raw image to jpeg"),
-                };
+                }
             }
             Err(TryRecvError::Empty) => { /* pass to continue looping */ }
             Err(e) => eprintln!("Error receiving image: {:?}", e),
@@ -513,7 +513,7 @@ fn handle_orchestrator_command_message(
 
 fn filter_scene_graph_data(
     scene_graph: &serde_json::Value,
-    assigned_sensors: Vec<String>,
+    _assigned_sensors: Vec<String>,
     instance_id: &str,
 ) -> serde_json::Value {
     let mut filtered_scene_graph = scene_graph.clone();
