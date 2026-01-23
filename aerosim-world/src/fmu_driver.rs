@@ -450,7 +450,9 @@ impl FmuDriver {
 
             // Call FMU API to execute its 'enter initialization mode' function
             // to process the initial values set above
-            FmiInstance::enter_initialization_mode(fmu_instance, None, fmu_time, None);
+            if let Err(e) = FmiInstance::enter_initialization_mode(fmu_instance, None, fmu_time, None) {
+                error!("[{}] Failed to enter initialization mode: {:?}", fmu_id, e);
+            }
 
             // Re-set initial values for FMU input-type variables because they get reset to zero
             // during FmiInstance::enter_initialization_mode()
@@ -460,7 +462,9 @@ impl FmuDriver {
 
             // Call FMU API to execute its 'exit initialization mode' function
             // to be ready to start stepping
-            FmiInstance::exit_initialization_mode(fmu_instance);
+            if let Err(e) = FmiInstance::exit_initialization_mode(fmu_instance) {
+                error!("[{}] Failed to exit initialization mode: {:?}", fmu_id, e);
+            }
 
             // Publish initial value output topics for initial timestamp
             publish_component_output_topics_fmu3(
@@ -550,7 +554,7 @@ impl FmuDriver {
                 let mut early_return = false;
                 let mut last_successful_time: f64 = 0.0;
 
-                fmu_instance.do_step(
+                let step_result = fmu_instance.do_step(
                     last_fmu_time,
                     local_step_sec,
                     no_set_fmu_state_prior_to_current_point,
@@ -562,14 +566,16 @@ impl FmuDriver {
 
                 // Validate that the step was successfully advanced
                 let time_stepped = last_successful_time - last_fmu_time;
-                if event_handling_needed
+                let time_mismatch = (time_stepped - local_step_sec).abs() > TIME_SEC_TOL;
+                if step_result.is_err()
+                    || event_handling_needed
                     || terminate_simulation
                     || early_return
-                    || (time_stepped - local_step_sec).abs() > TIME_SEC_TOL
+                    || time_mismatch
                 {
                     error!(
-                        "[{}] FMU did not successfully advance by the target step time.",
-                        fmu_id
+                        "[{}] FMU do_step failed: result={:?}, event_handling_needed={}, terminate_simulation={}, early_return={}, time_mismatch={}",
+                        fmu_id, step_result, event_handling_needed, terminate_simulation, early_return, time_mismatch
                     );
                     return;
                 }
