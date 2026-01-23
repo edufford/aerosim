@@ -182,8 +182,8 @@ impl Fmi3ModelVarInfo {
 
 // ----------------------------------------------------------------------------
 // Fmi3Model struct to combine Import and Instance.
-// With the new fmi v0.5.0+ API, instances no longer hold lifetime references
-// to the import, so we can store them together without lifetime workarounds.
+// With the fmi crate's main branch (post-v0.5.0), instances no longer hold
+// lifetime references to the import, so we can store them together directly.
 
 pub struct Fmi3Model {
     fmu_import: Fmi3Import,
@@ -257,46 +257,6 @@ impl Fmi3Model {
 }
 
 // ----------------------------------------------------------------------------
-// Alternative way to deal with Fmi3Model import lifetime through a raw pointer
-
-// pub struct FmiModel<'a> {
-//     fmu_import: Box<Fmi3Import>,
-//     fmu_instance: fmi::fmi3::instance::InstanceCS<'a>,
-// }
-
-// impl<'a> FmiModel<'a> {
-//     pub fn new(fmu_filename: PathBuf) -> Self {
-//         // Allocate the import on the heap.
-//         let fmu_import: Box<Fmi3Import> =
-//             Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
-
-//         // Manually extend the lifetime of the reference to match 'a through a raw pointer.
-//         let fmu_import_ref: &'a Fmi3Import =
-//             unsafe { &*(fmu_import.as_ref() as *const Fmi3Import) };
-
-//         let fmu_instance = fmu_import_ref
-//             .instantiate_cs("instance1", false, true, false, false, &[])
-//             .expect("Unable to instantiate FMU instance.");
-
-//         Self {
-//             fmu_import,
-//             fmu_instance,
-//         }
-//     }
-// }
-
-// ----------------------------------------------------------------------------
-// Alternative way to deal with Fmi3Model import lifetime using 'ouroboros' crate
-
-// #[self_referencing]
-// pub struct FmiModel {
-//     fmu_import: Rc<Fmi3Import>,
-//     #[covariant]
-//     #[borrows(fmu_import)]
-//     fmu_instance: fmi::fmi3::instance::InstanceCS<'this>,
-// }
-
-// ----------------------------------------------------------------------------
 // FMI 2.0 + 3.0 enum type placeholders to be implemented in the future
 
 // pub enum FmiImportEnum {
@@ -304,14 +264,14 @@ impl Fmi3Model {
 //     Fmi3Import(Fmi3Import),
 // }
 
-// pub enum FmiInstanceEnum<'a> {
-//     Fmi2Instance(fmi::fmi2::instance::InstanceCS<'a>),
-//     Fmi3Instance(fmi::fmi3::instance::InstanceCS<'a>),
+// pub enum FmiInstanceEnum {
+//     Fmi2Instance(fmi::fmi2::instance::InstanceCS),
+//     Fmi3Instance(fmi::fmi3::instance::InstanceCS),
 // }
 
-// pub enum ModelDescriptionEnum<'a> {
-//     Fmi2ModelDescription(&'a fmi::fmi2::schema::Fmi2ModelDescription),
-//     Fmi3ModelDescription(&'a fmi::fmi3::schema::Fmi3ModelDescription),
+// pub enum ModelDescriptionEnum<'md> {
+//     Fmi2ModelDescription(&'md fmi::fmi2::schema::Fmi2ModelDescription),
+//     Fmi3ModelDescription(&'md fmi::fmi3::schema::Fmi3ModelDescription),
 // }
 
 // ---------------------------------------------------------------------------
