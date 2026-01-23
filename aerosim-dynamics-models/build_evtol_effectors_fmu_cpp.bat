@@ -23,5 +23,9 @@ if exist "%BUILD_DIR%\evtol_effectors_fmu_model_cpp.fmu" (
     echo Built and copied evtol_effectors_fmu_model_cpp.fmu to ..\examples\fmu
 ) else (
     echo Build failed - FMU file not found
+    cd /d "%SCRIPT_DIR%"
     exit /b 1
 )
+
+REM Return to original directory
+cd /d "%SCRIPT_DIR%"

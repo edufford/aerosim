@@ -10,16 +10,20 @@ set(FMU_MODEL_NAME "evtol_effectors_fmu_model_cpp")
 
 # Fetch CPPFMU (FMI 3.0 version) from PythonFMU3 repository
 include(FetchContent)
+
+# Set policy to use new FetchContent behavior
+if(POLICY CMP0169)
+    cmake_policy(SET CMP0169 NEW)
+endif()
+
 FetchContent_Declare(
     pythonfmu3
     GIT_REPOSITORY https://github.com/stephensmith25/PythonFMU3.git
     GIT_TAG        master
+    EXCLUDE_FROM_ALL
 )
 # Only populate, don't configure/build their CMake
-FetchContent_GetProperties(pythonfmu3)
-if(NOT pythonfmu3_POPULATED)
-    FetchContent_Populate(pythonfmu3)
-endif()
+FetchContent_MakeAvailable(pythonfmu3)
 
 set(CPPFMU_SOURCE_DIR "${pythonfmu3_SOURCE_DIR}/pythonfmu3/pythonfmu-export/src")
 message(STATUS "Using CPPFMU sources from: ${CPPFMU_SOURCE_DIR}")
@@ -47,6 +51,33 @@ add_library(${FMU_MODEL_NAME} SHARED
 target_include_directories(${FMU_MODEL_NAME} PRIVATE
     ${CPPFMU_SOURCE_DIR}
 )
+
+# Suppress C4297 warnings for third-party CPPFMU code on MSVC
+# Warning C4297: function assumed not to throw an exception but does
+#
+# The CPPFMU library has stub implementations for optional FMI 3.0 features that
+# throw std::logic_error from extern "C" functions without try-catch blocks.
+# Affected functions include:
+#   - fmi3InstantiateScheduledExecution (line 179)
+#   - fmi3GetFloat32, fmi3SetFloat32 (lines 919-920)
+#   - fmi3Get/SetInt8, Int16, UInt8, UInt16, UInt32 (lines 922-932)
+#   - fmi3Get/SetClock (lines 940, 948)
+#   - fmi3Get/SetBinary (lines 959, 969)
+#   - fmi3GetNumberOfVariableDependencies, fmi3GetVariableDependencies (lines 976, 987)
+#   - fmi3GetAdjointDerivative (line 1000)
+#   - fmi3Get/SetIntervalDecimal, IntervalFraction (lines 1010, 1021, 1042, 1050)
+#   - fmi3Get/SetShiftDecimal, ShiftFraction (lines 1028, 1035, 1057, 1065)
+#   - fmi3EvaluateDiscreteStates (line 1071)
+#   - fmi3ActivateModelPartition (line 1078)
+#
+# These are unimplemented optional features. Core implemented functions (like
+# fmi3InstantiateCoSimulation) have proper try-catch blocks. Safe to suppress.
+if(MSVC)
+    set_source_files_properties(
+        ${CPPFMU_SOURCE_DIR}/cppfmu/fmi_functions.cpp
+        PROPERTIES COMPILE_FLAGS "/wd4297"
+    )
+endif()
 
 # Output directory for the built library
 set_target_properties(${FMU_MODEL_NAME} PROPERTIES
