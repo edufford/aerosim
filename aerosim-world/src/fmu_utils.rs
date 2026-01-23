@@ -5,9 +5,10 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use fmi::fmi3::{import::Fmi3Import, instance::Common, schema::VariableType};
+use fmi::fmi3::{import::Fmi3Import, schema::VariableType, Common, Fmi3Model as Fmi3ModelTrait, GetSet};
 use fmi::schema::fmi3::ArrayableVariableTrait;
-use fmi::traits::{FmiImport, FmiInstance};
+use fmi::traits::FmiImport;
+use std::ffi::CString;
 
 use aerosim_data::{
     middleware::{Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, Serializer, SerializerEnum},
@@ -72,70 +73,60 @@ pub struct Fmi3ModelVarInfo {
 impl Fmi3ModelVarInfo {
     pub fn new(fmu_id: &str, fmi3_model: &Fmi3Model) -> Self {
         let mut fmu_var_info: HashMap<String, Fmi3VarInfo> = HashMap::new();
-        let fmu_model_desc = fmi3_model.get_fmu_instance_ref().model_description();
+        let fmu_model_desc = fmi3_model.model_description();
 
         // Collect all of the variable value references
+        // Store the vectors first to extend their lifetime
+        let float64_vars = fmu_model_desc.model_variables.float64();
+        let float32_vars = fmu_model_desc.model_variables.float32();
+        let int64_vars = fmu_model_desc.model_variables.int64();
+        let int32_vars = fmu_model_desc.model_variables.int32();
+        let int16_vars = fmu_model_desc.model_variables.int16();
+        let int8_vars = fmu_model_desc.model_variables.int8();
+        let uint64_vars = fmu_model_desc.model_variables.uint64();
+        let uint32_vars = fmu_model_desc.model_variables.uint32();
+        let uint16_vars = fmu_model_desc.model_variables.uint16();
+        let uint8_vars = fmu_model_desc.model_variables.uint8();
+        let boolean_vars = fmu_model_desc.model_variables.boolean();
+        let string_vars = fmu_model_desc.model_variables.string();
+
         let all_fmu_var_iter = itertools::chain!(
-            fmu_model_desc
-                .model_variables
-                .float64
+            float64_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .float32
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            float32_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .int64
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            int64_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .int32
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            int32_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .int16
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            int16_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .int8
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            int8_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .uint64
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            uint64_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .uint32
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            uint32_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .uint16
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            uint16_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .uint8
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            uint8_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .boolean
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            boolean_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
-            fmu_model_desc
-                .model_variables
-                .string
+                .map(|v| *v as &dyn ArrayableVariableTrait),
+            string_vars
                 .iter()
-                .map(|v| v as &dyn ArrayableVariableTrait),
+                .map(|v| *v as &dyn ArrayableVariableTrait),
         );
 
         for fmu_var in all_fmu_var_iter {
@@ -146,10 +137,11 @@ impl Fmi3ModelVarInfo {
             let fmu_var_dim: Vec<u64> = fmu_var
                 .dimensions()
                 .iter()
-                .map(|d| {
-                    d.start
-                        .expect("Error: Only dimensions using 'start' value are supported.")
-                        as u64
+                .map(|d| match d {
+                    fmi::fmi3::schema::Dimension::Fixed(start) => *start as u64,
+                    fmi::fmi3::schema::Dimension::Variable(_) => {
+                        panic!("Error: Only dimensions using 'Fixed' value are supported.")
+                    }
                 })
                 .collect();
             let fmu_var_tot_dim: usize = fmu_var_dim
@@ -189,26 +181,24 @@ impl Fmi3ModelVarInfo {
 }
 
 // ----------------------------------------------------------------------------
-// Fmi3Model struct to combine Import and Instance (that has a reference to
-// the Import bindings). The Import lifetime is made static through a leaked
-// Box pointer to guarantee it outlives the instance.
+// Fmi3Model struct to combine Import and Instance.
+// With the fmi crate's main branch (post-v0.5.0), instances no longer hold
+// lifetime references to the import, so we can store them together directly.
 
 pub struct Fmi3Model {
-    #[allow(unused)]
-    fmu_import: Box<Fmi3Import>,
-    fmu_instance: fmi::fmi3::instance::InstanceCS<'static>,
+    fmu_import: Fmi3Import,
+    fmu_instance: fmi::fmi3::instance::InstanceCS,
 }
 
 impl Fmi3Model {
     pub fn new(fmu_filename: PathBuf) -> Self {
-        // Allocate the import on the heap and leak it to get a 'static reference.
-        let fmu_import_box: Box<Fmi3Import> =
-            Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
+        let fmu_import: Fmi3Import =
+            fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file.");
 
         if std::env::consts::OS == "windows" {
             // Add extracted lib path to system path so any dependency libs can also be found and loaded
-            let archive_path = fmu_import_box.archive_path();
-            let mut shared_lib_path = fmu_import_box
+            let archive_path = fmu_import.archive_path();
+            let mut shared_lib_path = fmu_import
                 .shared_lib_path("")
                 .expect("Unable to get FMU shared lib path.");
             let _ = shared_lib_path.pop(); // remove blank '.dll' that shared_lib_path() adds at the end
@@ -230,15 +220,9 @@ impl Fmi3Model {
             // TODO Update the Linux path like above
         }
 
-        let fmu_import_static: &'static Fmi3Import = Box::leak(fmu_import_box);
-
-        let fmu_instance = fmu_import_static
+        let fmu_instance = fmu_import
             .instantiate_cs("instance1", false, true, false, false, &[])
             .expect("Unable to instantiate FMU instance.");
-
-        // Rebuild the Box to deallocate it later.
-        let fmu_import =
-            unsafe { Box::from_raw(fmu_import_static as *const Fmi3Import as *mut Fmi3Import) };
 
         let fmu_model_desc = fmu_import.model_description();
 
@@ -253,11 +237,15 @@ impl Fmi3Model {
         }
     }
 
-    pub fn get_fmu_instance_ref(&self) -> &fmi::fmi3::instance::InstanceCS<'static> {
+    pub fn model_description(&self) -> &fmi::fmi3::schema::Fmi3ModelDescription {
+        self.fmu_import.model_description()
+    }
+
+    pub fn get_fmu_instance_ref(&self) -> &fmi::fmi3::instance::InstanceCS {
         &self.fmu_instance
     }
 
-    pub fn get_fmu_instance_mut(&mut self) -> &mut fmi::fmi3::instance::InstanceCS<'static> {
+    pub fn get_fmu_instance_mut(&mut self) -> &mut fmi::fmi3::instance::InstanceCS {
         &mut self.fmu_instance
     }
 
@@ -269,46 +257,6 @@ impl Fmi3Model {
 }
 
 // ----------------------------------------------------------------------------
-// Alternative way to deal with Fmi3Model import lifetime through a raw pointer
-
-// pub struct FmiModel<'a> {
-//     fmu_import: Box<Fmi3Import>,
-//     fmu_instance: fmi::fmi3::instance::InstanceCS<'a>,
-// }
-
-// impl<'a> FmiModel<'a> {
-//     pub fn new(fmu_filename: PathBuf) -> Self {
-//         // Allocate the import on the heap.
-//         let fmu_import: Box<Fmi3Import> =
-//             Box::new(fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file."));
-
-//         // Manually extend the lifetime of the reference to match 'a through a raw pointer.
-//         let fmu_import_ref: &'a Fmi3Import =
-//             unsafe { &*(fmu_import.as_ref() as *const Fmi3Import) };
-
-//         let fmu_instance = fmu_import_ref
-//             .instantiate_cs("instance1", false, true, false, false, &[])
-//             .expect("Unable to instantiate FMU instance.");
-
-//         Self {
-//             fmu_import,
-//             fmu_instance,
-//         }
-//     }
-// }
-
-// ----------------------------------------------------------------------------
-// Alternative way to deal with Fmi3Model import lifetime using 'ouroboros' crate
-
-// #[self_referencing]
-// pub struct FmiModel {
-//     fmu_import: Rc<Fmi3Import>,
-//     #[covariant]
-//     #[borrows(fmu_import)]
-//     fmu_instance: fmi::fmi3::instance::InstanceCS<'this>,
-// }
-
-// ----------------------------------------------------------------------------
 // FMI 2.0 + 3.0 enum type placeholders to be implemented in the future
 
 // pub enum FmiImportEnum {
@@ -316,14 +264,14 @@ impl Fmi3Model {
 //     Fmi3Import(Fmi3Import),
 // }
 
-// pub enum FmiInstanceEnum<'a> {
-//     Fmi2Instance(fmi::fmi2::instance::InstanceCS<'a>),
-//     Fmi3Instance(fmi::fmi3::instance::InstanceCS<'a>),
+// pub enum FmiInstanceEnum {
+//     Fmi2Instance(fmi::fmi2::instance::InstanceCS),
+//     Fmi3Instance(fmi::fmi3::instance::InstanceCS),
 // }
 
-// pub enum ModelDescriptionEnum<'a> {
-//     Fmi2ModelDescription(&'a fmi::fmi2::schema::Fmi2ModelDescription),
-//     Fmi3ModelDescription(&'a fmi::fmi3::schema::Fmi3ModelDescription),
+// pub enum ModelDescriptionEnum<'md> {
+//     Fmi2ModelDescription(&'md fmi::fmi2::schema::Fmi2ModelDescription),
+//     Fmi3ModelDescription(&'md fmi::fmi3::schema::Fmi3ModelDescription),
 // }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +322,7 @@ pub fn set_init_value_fmu3(
     fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
 ) {
     info!(
-        "[{}] Setting initial value '{}' = {:?}",
+        "[{}] Setting initial value '{}' = {}",
         fmu_id, init_var, init_value
     );
 
@@ -458,8 +406,12 @@ pub fn set_init_value_fmu3(
             let _ = fmu_instance.set_boolean(&[fmu_var_info.fmu_var_ref], &values);
         }
         VariableType::FmiString => {
-            let values: Vec<&str> = value_array.iter().filter_map(|v| v.as_str()).collect();
-            let _ = fmu_instance.set_string(&[fmu_var_info.fmu_var_ref], values.into_iter());
+            let values: Vec<CString> = value_array
+                .iter()
+                .filter_map(|v| v.as_str())
+                .filter_map(|s| CString::new(s).ok())
+                .collect();
+            let _ = fmu_instance.set_string(&[fmu_var_info.fmu_var_ref], &values);
         }
         _ => {
             warn!(
@@ -634,13 +586,14 @@ pub fn set_fmu3_from_json(
             let _ = fmu_instance.set_boolean(&[var_info.fmu_var_ref], &values);
         }
         VariableType::FmiString => {
-            let values = new_val
+            let values: Vec<CString> = new_val
                 .as_array()
                 .expect("Not a valid array of string.")
                 .iter()
                 .filter_map(|v| v.as_str())
-                .collect::<Vec<&str>>();
-            let _ = fmu_instance.set_string(&[var_info.fmu_var_ref], values.into_iter());
+                .filter_map(|s| CString::new(s).ok())
+                .collect();
+            let _ = fmu_instance.set_string(&[var_info.fmu_var_ref], &values);
         }
         _ => {
             warn!(
@@ -762,16 +715,19 @@ pub fn get_fmu3_string(
     fmu_var_info: &Fmi3VarInfo,
     fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
 ) -> Vec<String> {
-    let mut values: Vec<String> = vec![String::new(); fmu_var_info.fmu_var_tot_dim];
+    let mut values: Vec<CString> = vec![CString::default(); fmu_var_info.fmu_var_tot_dim];
     let _ = fmu_instance.get_string(&[fmu_var_info.fmu_var_ref], &mut values);
     values
+        .into_iter()
+        .map(|cs| cs.into_string().unwrap_or_default())
+        .collect()
 }
 
 pub fn set_json_from_fmu3(
     fmu_id: &str,
     fmu_var_name: &str,
     fmu_model_var_info: &Fmi3ModelVarInfo,
-    fmu_instance: &mut fmi::fmi3::instance::InstanceCS<'_>,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
     msg_struct_json: &mut serde_json::Value,
     json_var: &str,
     json_var_as_pointer: bool,
@@ -842,7 +798,7 @@ pub async fn publish_component_output_topics_fmu3(
     fmu_id: &str,
     fmu_config_json: &serde_json::Value,
     fmu_model_var_info: &Fmi3ModelVarInfo,
-    fmu_instance: &mut fmi::fmi3::instance::InstanceCS<'_>,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
     timestamp: &TimeStamp,
     middleware: &Arc<MiddlewareEnum>,
     serializer: &SerializerEnum,
@@ -986,7 +942,7 @@ pub fn pack_raw_aerosim_fmu_msg<T: AerosimMessage + Default>(
     fmu_id: &str,
     var_prefix: &str,
     fmu_model_var_info: &Fmi3ModelVarInfo,
-    fmu_instance: &mut fmi::fmi3::instance::InstanceCS<'_>,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
     serializer: &SerializerEnum,
     metadata: &Metadata,
 ) -> Vec<u8> {
@@ -1024,7 +980,7 @@ pub async fn publish_aux_output_topics_fmu3(
     fmu_id: &str,
     fmu_config_json: &serde_json::Value,
     fmu_model_var_info: &Fmi3ModelVarInfo,
-    fmu_instance: &mut fmi::fmi3::instance::InstanceCS<'_>,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
     timestamp: &TimeStamp,
     middleware: &Arc<MiddlewareEnum>,
 ) {

@@ -26,6 +26,6 @@ bevy_ecs = "0.15.0"
 bevy_hierarchy = "0.15.0"
 bevy_math = "0.15.0"
 bevy_transform = "0.15.0"
-fmi = { git = "https://github.com/edufford/rust-fmi.git", branch = "edufford/int_array" }
+fmi = { git = "https://github.com/edufford/rust-fmi.git", branch = "main_fix_annotations" }
 itertools = "0.14.0"
 mcap="0.15.0"
