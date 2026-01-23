@@ -1485,7 +1485,7 @@
         },
         {
             "id": "evtol_effectors",
-            "fmu_model_path": "examples/fmu/evtol_effectors_fmu_model.fmu",
+            "fmu_model_path": "examples/fmu/evtol_effectors_fmu_model_cpp.fmu",
             "step_trigger_topic": {
                 "msg_type": "aerosim::types::JsonData",
                 "topic": "aerosim.clock.tick_group_02"

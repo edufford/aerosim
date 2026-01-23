@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+    fmiVersion="3.0"
+    modelName="evtol_effectors_fmu_model_cpp"
+    instantiationToken="{evtol-effectors-cpp-fmu-guid}"
+    description="C++ implementation of an eVTOL effector model"
+    author="AeroSim"
+    generationTool="CPPFMU"
+    variableNamingConvention="structured">
+
+    <CoSimulation
+        modelIdentifier="evtol_effectors_fmu_model_cpp"
+        canHandleVariableCommunicationStepSize="true"
+        canBeInstantiatedOnlyOncePerProcess="false"
+        canGetAndSetFMUState="false"
+        canSerializeFMUState="false"
+        providesDirectionalDerivatives="false"
+        providesAdjointDerivatives="false"/>
+
+    <DefaultExperiment startTime="0.0" stepSize="0.01"/>
+
+    <ModelVariables>
+        <!-- Independent time variable (required by FMI 3.0) -->
+        <Float64 name="time" valueReference="0" causality="independent" variability="continuous"/>
+
+        <!-- Input variables -->
+        <Float64 name="tilt_deg" valueReference="1" causality="input" variability="continuous" start="0.0" description="Tilt angle in degrees"/>
+        <Float64 name="proprotor_rpm" valueReference="2" causality="input" variability="continuous" start="0.0" description="Proprotor RPM"/>
+        <Float64 name="liftrotor_rpm" valueReference="3" causality="input" variability="continuous" start="0.0" description="Liftrotor RPM"/>
+
+        <!-- Tiltrotor 1 outputs (VR 100-106) -->
+        <Float64 name="tiltrotor_1.pose.position.x" valueReference="100" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_1.pose.position.y" valueReference="101" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_1.pose.position.z" valueReference="102" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_1.pose.orientation.w" valueReference="103" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="tiltrotor_1.pose.orientation.x" valueReference="104" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_1.pose.orientation.y" valueReference="105" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_1.pose.orientation.z" valueReference="106" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Tiltrotor 2 outputs (VR 107-113) -->
+        <Float64 name="tiltrotor_2.pose.position.x" valueReference="107" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_2.pose.position.y" valueReference="108" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_2.pose.position.z" valueReference="109" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_2.pose.orientation.w" valueReference="110" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="tiltrotor_2.pose.orientation.x" valueReference="111" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_2.pose.orientation.y" valueReference="112" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_2.pose.orientation.z" valueReference="113" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Tiltrotor 3 outputs (VR 114-120) -->
+        <Float64 name="tiltrotor_3.pose.position.x" valueReference="114" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_3.pose.position.y" valueReference="115" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_3.pose.position.z" valueReference="116" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_3.pose.orientation.w" valueReference="117" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="tiltrotor_3.pose.orientation.x" valueReference="118" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_3.pose.orientation.y" valueReference="119" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_3.pose.orientation.z" valueReference="120" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Tiltrotor 4 outputs (VR 121-127) -->
+        <Float64 name="tiltrotor_4.pose.position.x" valueReference="121" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_4.pose.position.y" valueReference="122" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_4.pose.position.z" valueReference="123" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_4.pose.orientation.w" valueReference="124" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="tiltrotor_4.pose.orientation.x" valueReference="125" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_4.pose.orientation.y" valueReference="126" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_4.pose.orientation.z" valueReference="127" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Tiltrotor 5 outputs (VR 128-134) -->
+        <Float64 name="tiltrotor_5.pose.position.x" valueReference="128" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_5.pose.position.y" valueReference="129" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_5.pose.position.z" valueReference="130" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_5.pose.orientation.w" valueReference="131" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="tiltrotor_5.pose.orientation.x" valueReference="132" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_5.pose.orientation.y" valueReference="133" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_5.pose.orientation.z" valueReference="134" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Tiltrotor 6 outputs (VR 135-141) -->
+        <Float64 name="tiltrotor_6.pose.position.x" valueReference="135" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_6.pose.position.y" valueReference="136" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_6.pose.position.z" valueReference="137" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_6.pose.orientation.w" valueReference="138" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="tiltrotor_6.pose.orientation.x" valueReference="139" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_6.pose.orientation.y" valueReference="140" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="tiltrotor_6.pose.orientation.z" valueReference="141" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Rotor 1 outputs (VR 200-206) -->
+        <Float64 name="rotor_1.pose.position.x" valueReference="200" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_1.pose.position.y" valueReference="201" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_1.pose.position.z" valueReference="202" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_1.pose.orientation.w" valueReference="203" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="rotor_1.pose.orientation.x" valueReference="204" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_1.pose.orientation.y" valueReference="205" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_1.pose.orientation.z" valueReference="206" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Rotor 2 outputs (VR 207-213) -->
+        <Float64 name="rotor_2.pose.position.x" valueReference="207" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_2.pose.position.y" valueReference="208" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_2.pose.position.z" valueReference="209" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_2.pose.orientation.w" valueReference="210" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="rotor_2.pose.orientation.x" valueReference="211" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_2.pose.orientation.y" valueReference="212" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_2.pose.orientation.z" valueReference="213" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Rotor 3 outputs (VR 214-220) -->
+        <Float64 name="rotor_3.pose.position.x" valueReference="214" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_3.pose.position.y" valueReference="215" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_3.pose.position.z" valueReference="216" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_3.pose.orientation.w" valueReference="217" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="rotor_3.pose.orientation.x" valueReference="218" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_3.pose.orientation.y" valueReference="219" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_3.pose.orientation.z" valueReference="220" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Rotor 4 outputs (VR 221-227) -->
+        <Float64 name="rotor_4.pose.position.x" valueReference="221" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_4.pose.position.y" valueReference="222" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_4.pose.position.z" valueReference="223" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_4.pose.orientation.w" valueReference="224" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="rotor_4.pose.orientation.x" valueReference="225" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_4.pose.orientation.y" valueReference="226" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_4.pose.orientation.z" valueReference="227" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Rotor 5 outputs (VR 228-234) -->
+        <Float64 name="rotor_5.pose.position.x" valueReference="228" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_5.pose.position.y" valueReference="229" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_5.pose.position.z" valueReference="230" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_5.pose.orientation.w" valueReference="231" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="rotor_5.pose.orientation.x" valueReference="232" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_5.pose.orientation.y" valueReference="233" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_5.pose.orientation.z" valueReference="234" causality="output" variability="continuous" initial="exact" start="0.0"/>
+
+        <!-- Rotor 6 outputs (VR 235-241) -->
+        <Float64 name="rotor_6.pose.position.x" valueReference="235" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_6.pose.position.y" valueReference="236" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_6.pose.position.z" valueReference="237" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_6.pose.orientation.w" valueReference="238" causality="output" variability="continuous" initial="exact" start="1.0"/>
+        <Float64 name="rotor_6.pose.orientation.x" valueReference="239" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_6.pose.orientation.y" valueReference="240" causality="output" variability="continuous" initial="exact" start="0.0"/>
+        <Float64 name="rotor_6.pose.orientation.z" valueReference="241" causality="output" variability="continuous" initial="exact" start="0.0"/>
+    </ModelVariables>
+
+    <ModelStructure>
+        <Output valueReference="100"/>
+        <Output valueReference="101"/>
+        <Output valueReference="102"/>
+        <Output valueReference="103"/>
+        <Output valueReference="104"/>
+        <Output valueReference="105"/>
+        <Output valueReference="106"/>
+        <Output valueReference="107"/>
+        <Output valueReference="108"/>
+        <Output valueReference="109"/>
+        <Output valueReference="110"/>
+        <Output valueReference="111"/>
+        <Output valueReference="112"/>
+        <Output valueReference="113"/>
+        <Output valueReference="114"/>
+        <Output valueReference="115"/>
+        <Output valueReference="116"/>
+        <Output valueReference="117"/>
+        <Output valueReference="118"/>
+        <Output valueReference="119"/>
+        <Output valueReference="120"/>
+        <Output valueReference="121"/>
+        <Output valueReference="122"/>
+        <Output valueReference="123"/>
+        <Output valueReference="124"/>
+        <Output valueReference="125"/>
+        <Output valueReference="126"/>
+        <Output valueReference="127"/>
+        <Output valueReference="128"/>
+        <Output valueReference="129"/>
+        <Output valueReference="130"/>
+        <Output valueReference="131"/>
+        <Output valueReference="132"/>
+        <Output valueReference="133"/>
+        <Output valueReference="134"/>
+        <Output valueReference="135"/>
+        <Output valueReference="136"/>
+        <Output valueReference="137"/>
+        <Output valueReference="138"/>
+        <Output valueReference="139"/>
+        <Output valueReference="140"/>
+        <Output valueReference="141"/>
+        <Output valueReference="200"/>
+        <Output valueReference="201"/>
+        <Output valueReference="202"/>
+        <Output valueReference="203"/>
+        <Output valueReference="204"/>
+        <Output valueReference="205"/>
+        <Output valueReference="206"/>
+        <Output valueReference="207"/>
+        <Output valueReference="208"/>
+        <Output valueReference="209"/>
+        <Output valueReference="210"/>
+        <Output valueReference="211"/>
+        <Output valueReference="212"/>
+        <Output valueReference="213"/>
+        <Output valueReference="214"/>
+        <Output valueReference="215"/>
+        <Output valueReference="216"/>
+        <Output valueReference="217"/>
+        <Output valueReference="218"/>
+        <Output valueReference="219"/>
+        <Output valueReference="220"/>
+        <Output valueReference="221"/>
+        <Output valueReference="222"/>
+        <Output valueReference="223"/>
+        <Output valueReference="224"/>
+        <Output valueReference="225"/>
+        <Output valueReference="226"/>
+        <Output valueReference="227"/>
+        <Output valueReference="228"/>
+        <Output valueReference="229"/>
+        <Output valueReference="230"/>
+        <Output valueReference="231"/>
+        <Output valueReference="232"/>
+        <Output valueReference="233"/>
+        <Output valueReference="234"/>
+        <Output valueReference="235"/>
+        <Output valueReference="236"/>
+        <Output valueReference="237"/>
+        <Output valueReference="238"/>
+        <Output valueReference="239"/>
+        <Output valueReference="240"/>
+        <Output valueReference="241"/>
+    </ModelStructure>
+</fmiModelDescription>
