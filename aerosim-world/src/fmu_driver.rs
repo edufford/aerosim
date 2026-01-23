@@ -26,7 +26,7 @@ use aerosim_data::{
 
 use crate::fmu_utils::{
     publish_aux_output_topics_fmu3, publish_component_output_topics_fmu3, set_fmu3_from_json,
-    set_init_value_fmu3, Fmi3Model, Fmi3ModelVarInfo, Fmi3VarInfo, NUM_TIME_DECIMALS, TIME_SEC_TOL,
+    set_init_value_fmu3, Fmi3Model, Fmi3VarInfo, NUM_TIME_DECIMALS, TIME_SEC_TOL,
 };
 
 // ----------------------------------------------------------------------------
@@ -193,7 +193,6 @@ impl FmuDriver {
         let mut all_topics_to_subscribe: HashSet<(String, String)> = HashSet::new();
 
         let mut fmu_model: Option<Fmi3Model> = None;
-        let mut fmu_model_var_info: Option<Fmi3ModelVarInfo> = None;
         let mut fmu_time: f64 = 0.0;
 
         let input_data_map: Arc<Mutex<HashMap<String, (Metadata, Value)>>> =
@@ -221,7 +220,6 @@ impl FmuDriver {
                         &mut all_topics_to_subscribe,
                         &mut fmu_time,
                         &mut fmu_model,
-                        &mut fmu_model_var_info,
                         &input_data_map,
                     )
                     .await;
@@ -244,7 +242,6 @@ impl FmuDriver {
                             &metadata,
                             &mut fmu_time,
                             &mut fmu_model,
-                            &mut fmu_model_var_info,
                             &input_data_map,
                         )
                         .await;
@@ -349,13 +346,12 @@ impl FmuDriver {
         }
     }
 
-    // Function to load the FMU model instance from the config FMU model file path, returning
-    // the Fmi3Model object and the Fmi3ModelVarInfo struct of the FMU's variable metadata
+    // Function to load the FMU model instance from the config FMU model file path
     fn load_fmu_model(
         fmu_id: &str,
         working_dir: &str,
         fmu_config_json: &Value,
-    ) -> (Option<Fmi3Model>, Option<Fmi3ModelVarInfo>) {
+    ) -> Option<Fmi3Model> {
         // ------------------------------------------------------------
         // FMU model file path processing
 
@@ -405,15 +401,10 @@ impl FmuDriver {
             // ------------------------------------------------------------
             // FMI 3.0 model processing
 
-            // Load the FMU instance
-            let fmu_model = Some(Fmi3Model::new(fmu_filename));
-            let fmu_model_var_info =
-                Some(Fmi3ModelVarInfo::new(fmu_id, fmu_model.as_ref().unwrap()));
-
-            return (fmu_model, fmu_model_var_info);
+            return Some(Fmi3Model::new(fmu_id, fmu_filename));
         }
 
-        (None, None)
+        None
     }
 
     // Function to initialize the FMU model (set initial values from the config, publish
@@ -426,12 +417,9 @@ impl FmuDriver {
         middleware: &Arc<MiddlewareEnum>,
         serializer: &SerializerEnum,
         fmu_model: &mut Option<Fmi3Model>,
-        fmu_model_var_info: &mut Option<Fmi3ModelVarInfo>,
     ) {
-        if let (Some(fmu_model_mut), Some(fmu_model_var_info_ref)) =
-            (fmu_model.as_mut(), fmu_model_var_info.as_ref())
-        {
-            let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
+        if let Some(fmu_model_mut) = fmu_model.as_mut() {
+            let (fmu_var_info, fmu_instance) = fmu_model_mut.get_var_info_ref_and_instance_mut();
 
             // Set initial values for FMU variables set in the "fmu_initial_vals" config
             let fmu_init_vals_obj: Option<&serde_json::Map<String, Value>> = fmu_config_json
@@ -440,16 +428,16 @@ impl FmuDriver {
             let mut fmu_input_var_init_vals: Vec<(&String, &Value, &Fmi3VarInfo)> = Vec::new();
             if let Some(fmu_init_vals) = fmu_init_vals_obj {
                 for (init_var, init_value) in fmu_init_vals {
-                    if let Some(fmu_var_info) = fmu_model_var_info_ref.get_fmu_var_info(init_var) {
+                    if let Some(var_info) = fmu_var_info.get_fmu_var_info(init_var) {
                         set_init_value_fmu3(
                             fmu_id,
                             init_var,
                             init_value,
-                            fmu_var_info,
+                            var_info,
                             fmu_instance,
                         );
-                        if fmu_var_info.fmu_var_causality == Causality::Input {
-                            fmu_input_var_init_vals.push((init_var, init_value, fmu_var_info));
+                        if var_info.fmu_var_causality == Causality::Input {
+                            fmu_input_var_init_vals.push((init_var, init_value, var_info));
                         }
                     } else {
                         warn!(
@@ -466,8 +454,8 @@ impl FmuDriver {
 
             // Re-set initial values for FMU input-type variables because they get reset to zero
             // during FmiInstance::enter_initialization_mode()
-            for (init_var, init_value, fmu_var_info) in fmu_input_var_init_vals {
-                set_init_value_fmu3(fmu_id, init_var, init_value, fmu_var_info, fmu_instance);
+            for (init_var, init_value, var_info) in fmu_input_var_init_vals {
+                set_init_value_fmu3(fmu_id, init_var, init_value, var_info, fmu_instance);
             }
 
             // Call FMU API to execute its 'exit initialization mode' function
@@ -478,7 +466,7 @@ impl FmuDriver {
             publish_component_output_topics_fmu3(
                 fmu_id,
                 &fmu_config_json,
-                fmu_model_var_info_ref,
+                fmu_var_info,
                 fmu_instance,
                 initial_timestamp,
                 middleware,
@@ -489,7 +477,7 @@ impl FmuDriver {
             publish_aux_output_topics_fmu3(
                 fmu_id,
                 &fmu_config_json,
-                fmu_model_var_info_ref,
+                fmu_var_info,
                 fmu_instance,
                 initial_timestamp,
                 &middleware,
@@ -506,13 +494,10 @@ impl FmuDriver {
         cur_step_sec: f64,
         fmu_time: &mut f64,
         fmu_model: &mut Option<Fmi3Model>,
-        fmu_model_var_info: &mut Option<Fmi3ModelVarInfo>,
         input_data_map: &Arc<Mutex<HashMap<String, (Metadata, Value)>>>,
     ) {
-        if let (Some(fmu_model_mut), Some(fmu_model_var_info_ref)) =
-            (fmu_model.as_mut(), fmu_model_var_info.as_ref())
-        {
-            let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
+        if let Some(fmu_model_mut) = fmu_model.as_mut() {
+            let (fmu_var_info, fmu_instance) = fmu_model_mut.get_var_info_ref_and_instance_mut();
 
             // ------------------------------------------------------------
             // Write inputs to the FMU
@@ -545,7 +530,7 @@ impl FmuDriver {
                             &in_msg_metadata,
                             aux_in_var_map,
                             fmu_id,
-                            fmu_model_var_info_ref,
+                            fmu_var_info,
                             fmu_instance,
                         );
                     }
@@ -630,7 +615,6 @@ impl FmuDriver {
         all_topics_to_subscribe: &mut HashSet<(String, String)>,
         fmu_time: &mut f64,
         fmu_model: &mut Option<Fmi3Model>,
-        fmu_model_var_info: &mut Option<Fmi3ModelVarInfo>,
         input_data_map: &Arc<Mutex<HashMap<String, (Metadata, Value)>>>,
     ) {
         let msg_json = payload.get_data().expect("Unable to get JsonData payload.");
@@ -740,20 +724,20 @@ impl FmuDriver {
                 .await;
 
             // Load the FMU model file
-            (*fmu_model, *fmu_model_var_info) =
-                FmuDriver::load_fmu_model(fmu_id, working_dir, &fmu_config_json);
+            *fmu_model = FmuDriver::load_fmu_model(fmu_id, working_dir, &fmu_config_json);
 
             // After loading FMU model file to populate fmu_var_refs, pass
             // through the world origin values as initial values if the FMU has
             // variables for it
-            if let Some(fmu_var_info_ref) = fmu_model_var_info.as_ref() {
-                if fmu_var_info_ref
+            if let Some(fmu_model_ref) = fmu_model.as_ref() {
+                let fmu_var_info = fmu_model_ref.get_var_info_ref();
+                if fmu_var_info
                     .get_fmu_var_info("world_origin_latitude")
                     .is_some()
-                    && fmu_var_info_ref
+                    && fmu_var_info
                         .get_fmu_var_info("world_origin_longitude")
                         .is_some()
-                    && fmu_var_info_ref
+                    && fmu_var_info
                         .get_fmu_var_info("world_origin_altitude")
                         .is_some()
                 {
@@ -805,7 +789,6 @@ impl FmuDriver {
                 &middleware,
                 &serializer,
                 fmu_model,
-                fmu_model_var_info,
             )
             .await;
 
@@ -833,7 +816,6 @@ impl FmuDriver {
         metadata: &Metadata,
         fmu_time: &mut f64,
         fmu_model: &mut Option<Fmi3Model>,
-        fmu_model_var_info: &mut Option<Fmi3ModelVarInfo>,
         input_data_map: &Arc<Mutex<HashMap<String, (Metadata, Value)>>>,
     ) {
         if !metadata.is_sim_time_valid() {
@@ -877,22 +859,19 @@ impl FmuDriver {
             cur_step_sec,
             fmu_time,
             fmu_model,
-            fmu_model_var_info,
             input_data_map,
         );
 
         // ----------------------------------------------------------------
         // Publish output data for the current timestamp
 
-        if let (Some(fmu_model_mut), Some(fmu_model_var_info_ref)) =
-            (fmu_model.as_mut(), fmu_model_var_info.as_ref())
-        {
-            let fmu_instance = fmu_model_mut.get_fmu_instance_mut();
+        if let Some(fmu_model_mut) = fmu_model.as_mut() {
+            let (fmu_var_info, fmu_instance) = fmu_model_mut.get_var_info_ref_and_instance_mut();
 
             publish_component_output_topics_fmu3(
                 fmu_id,
                 fmu_config_json,
-                fmu_model_var_info_ref,
+                fmu_var_info,
                 fmu_instance,
                 &timestamp_sim,
                 middleware,
@@ -903,7 +882,7 @@ impl FmuDriver {
             publish_aux_output_topics_fmu3(
                 fmu_id,
                 fmu_config_json,
-                fmu_model_var_info_ref,
+                fmu_var_info,
                 fmu_instance,
                 &timestamp_sim,
                 middleware,

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use fmi::fmi3::{import::Fmi3Import, schema::VariableType, Common, Fmi3Model as Fmi3ModelTrait, GetSet};
+use fmi::fmi3::{import::Fmi3Import, schema::{Fmi3ModelDescription, VariableType}, Common, Fmi3Model as Fmi3ModelTrait, GetSet};
 use fmi::schema::fmi3::ArrayableVariableTrait;
 use fmi::traits::FmiImport;
 use std::ffi::CString;
@@ -71,9 +71,8 @@ pub struct Fmi3ModelVarInfo {
 }
 
 impl Fmi3ModelVarInfo {
-    pub fn new(fmu_id: &str, fmi3_model: &Fmi3Model) -> Self {
+    pub fn new(fmu_id: &str, fmu_model_desc: &Fmi3ModelDescription) -> Self {
         let mut fmu_var_info: HashMap<String, Fmi3VarInfo> = HashMap::new();
-        let fmu_model_desc = fmi3_model.model_description();
 
         // Collect all of the variable value references
         // Store the vectors first to extend their lifetime
@@ -188,10 +187,11 @@ impl Fmi3ModelVarInfo {
 pub struct Fmi3Model {
     fmu_import: Fmi3Import,
     fmu_instance: fmi::fmi3::instance::InstanceCS,
+    var_info: Fmi3ModelVarInfo,
 }
 
 impl Fmi3Model {
-    pub fn new(fmu_filename: PathBuf) -> Self {
+    pub fn new(fmu_id: &str, fmu_filename: PathBuf) -> Self {
         let fmu_import: Fmi3Import =
             fmi::import::from_path(&fmu_filename).expect("Unable to import FMU file.");
 
@@ -231,14 +231,21 @@ impl Fmi3Model {
             fmu_model_desc.model_name, fmu_model_desc.fmi_version
         );
 
+        let var_info = Fmi3ModelVarInfo::new(fmu_id, fmu_model_desc);
+
         Self {
             fmu_import,
             fmu_instance,
+            var_info,
         }
     }
 
-    pub fn model_description(&self) -> &fmi::fmi3::schema::Fmi3ModelDescription {
+    pub fn get_model_description_ref(&self) -> &Fmi3ModelDescription {
         self.fmu_import.model_description()
+    }
+
+    pub fn get_var_info_ref(&self) -> &Fmi3ModelVarInfo {
+        &self.var_info
     }
 
     pub fn get_fmu_instance_ref(&self) -> &fmi::fmi3::instance::InstanceCS {
@@ -247,6 +254,24 @@ impl Fmi3Model {
 
     pub fn get_fmu_instance_mut(&mut self) -> &mut fmi::fmi3::instance::InstanceCS {
         &mut self.fmu_instance
+    }
+
+    /// Returns both var_info (immutable) and fmu_instance (mutable) references together.
+    ///
+    /// This method exists as a workaround for Rust's borrow checker limitation at method
+    /// boundaries. When calling separate methods like `get_var_info_ref()` and
+    /// `get_fmu_instance_mut()`, the borrow checker only sees the method signatures
+    /// (`&self` vs `&mut self`) and cannot determine that they access different fields.
+    /// This prevents holding an immutable reference from one while getting a mutable
+    /// reference from the other.
+    ///
+    /// By returning both references from a single method, Rust can see within the function
+    /// body that `self.var_info` and `self.fmu_instance` are disjoint fields, allowing
+    /// "split borrowing" of the struct.
+    pub fn get_var_info_ref_and_instance_mut(
+        &mut self,
+    ) -> (&Fmi3ModelVarInfo, &mut fmi::fmi3::instance::InstanceCS) {
+        (&self.var_info, &mut self.fmu_instance)
     }
 
     /// Terminate the FMU instance. This should be called before dropping the model
