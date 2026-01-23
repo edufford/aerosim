@@ -362,7 +362,7 @@ pub fn set_init_value_fmu3(
     fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
 ) {
     info!(
-        "[{}] Setting initial value '{}' = {:?}",
+        "[{}] Setting initial value '{}' = {}",
         fmu_id, init_var, init_value
     );
 
