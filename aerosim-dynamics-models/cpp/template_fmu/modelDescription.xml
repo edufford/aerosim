@@ -22,7 +22,7 @@
     instantiationToken="{template-fmu-guid}"
     description="Template FMU - multiply input by gain"
     author="AeroSim"
-    generationTool="CPPFMU"
+    generationTool="FMI 3.0 C API"
     variableNamingConvention="structured">
 
     <CoSimulation
@@ -71,6 +71,7 @@
             valueReference="1"
             causality="input"
             variability="continuous"
+            initial="exact"
             start="0.0"
             description="Input value to be multiplied by gain"/>
 
@@ -80,6 +81,7 @@
             valueReference="100"
             causality="parameter"
             variability="tunable"
+            initial="exact"
             start="1.0"
             description="Gain multiplier"/>
 

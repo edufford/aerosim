@@ -1,7 +1,7 @@
 // Template FMU - A starting point for creating C++ FMUs
 //
-// Uses the FMI 3.0 version of CPPFMU from pythonfmu3:
-// https://github.com/stephensmith25/PythonFMU3
+// Uses the FMI 3.0 C API directly with headers from:
+// https://github.com/modelica/fmi-standard
 //
 // This template demonstrates the minimal structure needed for a C++ FMU.
 // The example multiplies an input value by a gain parameter to produce an output.
@@ -12,13 +12,15 @@
 // 3. Update modelIdentifier and modelName in modelDescription.xml
 // 4. Add your variables to modelDescription.xml with unique valueReferences
 // 5. Update the kVr* constants to match your valueReferences
-// 6. Implement your logic in DoStep()
+// 6. Implement your logic in fmi3DoStep()
+//
+// This file contains the FMU-specific implementation. Generic FMI 3.0 stubs
+// for clock handling, state serialization, derivatives, and Model Exchange
+// are provided by fmi3_cs_stubs.cpp.
 
-#include "cppfmu/cppfmu_cs.hpp"
+#include "fmi3Functions.h"
 
-#include <cmath>
-
-namespace {
+#include <string>
 
 // =============================================================================
 // Value References
@@ -27,217 +29,247 @@ namespace {
 // Convention: time at 0, inputs 1-99, parameters 100-199, outputs 200-299.
 
 // Independent (time)
-constexpr cppfmu::FMIValueReference kVrTime = 0;
+constexpr fmi3ValueReference kVrTime = 0;
 
 // Inputs
-constexpr cppfmu::FMIValueReference kVrInput = 1;
+constexpr fmi3ValueReference kVrInput = 1;
 
 // Parameters (tunable)
-constexpr cppfmu::FMIValueReference kVrGain = 100;
+constexpr fmi3ValueReference kVrGain = 100;
 
 // Outputs
-constexpr cppfmu::FMIValueReference kVrOutput = 200;
+constexpr fmi3ValueReference kVrOutput = 200;
 
 // =============================================================================
-// FMU Implementation
+// FMU Instance Data
 // =============================================================================
 
-class TemplateFmu : public cppfmu::SlaveInstance {
- public:
-  TemplateFmu()
-      : time_(0.0),
-        input_(0.0),
-        gain_(1.0),
-        output_(0.0) {}
+struct FmuInstance {
+  std::string instance_name;
+  fmi3LogMessageCallback log_message;
+  fmi3InstanceEnvironment instance_environment;
 
-  // ---------------------------------------------------------------------------
-  // Variable Setters - Called by simulation environment to set FMU variables
-  // ---------------------------------------------------------------------------
+  // Model variables
+  fmi3Float64 time = 0.0;
+  fmi3Float64 input = 0.0;
+  fmi3Float64 gain = 1.0;
+  fmi3Float64 output = 0.0;
 
-  void SetFloat64(const cppfmu::FMIValueReference vr[], std::size_t nvr,
-                  const cppfmu::FMIFloat64 value[],
-                  std::size_t /*nValues*/) override {
-    for (std::size_t i = 0; i < nvr; ++i) {
-      switch (vr[i]) {
-        // Note: kVrTime is not settable here - it's set via SetTime()
-        case kVrInput:
-          input_ = value[i];
-          break;
-        case kVrGain:
-          gain_ = value[i];
-          break;
-        // Add cases for additional variables here
-        default:
-          break;
-      }
+  // Helper to log messages
+  void Log(fmi3Status status, const char* category, const char* message) {
+    if (log_message) {
+      log_message(instance_environment, status, category, message);
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Variable Getters - Called by simulation environment to read FMU variables
-  // ---------------------------------------------------------------------------
-
-  void GetFloat64(const cppfmu::FMIValueReference vr[], std::size_t nvr,
-                  cppfmu::FMIFloat64 value[],
-                  std::size_t /*nValues*/) const override {
-    for (std::size_t i = 0; i < nvr; ++i) {
-      switch (vr[i]) {
-        case kVrTime:
-          value[i] = time_;
-          break;
-        case kVrInput:
-          value[i] = input_;
-          break;
-        case kVrGain:
-          value[i] = gain_;
-          break;
-        case kVrOutput:
-          value[i] = output_;
-          break;
-        // Add cases for additional variables here
-        default:
-          value[i] = 0.0;
-          break;
-      }
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // DoStep - Main simulation step function
-  // ---------------------------------------------------------------------------
-  // This is called each simulation step. Implement your logic here.
-  //
-  // Parameters:
-  //   current_communication_point: Current simulation time
-  //   communication_step_size: Time step size
-  //   new_step: True if this is a new step (not a rollback)
-  //   event_handling_needed: Set to true if events need handling
-  //   terminate_simulation: Set to true to request simulation termination
-  //   early_return: Set to true if returning before step_size elapsed
-  //   end_of_step: Actual end time of the step
-
-  cppfmu::FMIStatus DoStep(cppfmu::FMIFloat64 current_communication_point,
-                           cppfmu::FMIFloat64 communication_step_size,
-                           cppfmu::FMIBoolean /*new_step*/,
-                           cppfmu::FMIBoolean* event_handling_needed,
-                           cppfmu::FMIBoolean* terminate_simulation,
-                           cppfmu::FMIBoolean* early_return,
-                           cppfmu::FMIFloat64& end_of_step) override {
-    // Update time (for Co-Simulation, time advances here, not via SetTime)
-    time_ = current_communication_point + communication_step_size;
-
-    // =========================================================================
-    // YOUR LOGIC HERE
-    // =========================================================================
-    // This example simply multiplies the input by the gain.
-    // Replace this with your actual computation.
-
-    output_ = input_ * gain_;
-
-    // =========================================================================
-    // END OF YOUR LOGIC
-    // =========================================================================
-
-    // Set output flags (typically leave these as-is)
-    *event_handling_needed = cppfmu::FMIFalse;
-    *terminate_simulation = cppfmu::FMIFalse;
-    *early_return = cppfmu::FMIFalse;
-    end_of_step = time_;
-
-    return cppfmu::FMIOK;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Initialization - Compute initial output values
-  // ---------------------------------------------------------------------------
-  // ExitInitializationMode is called after all initial values have been set
-  // but before the first DoStep(). Use this to compute initial outputs.
-
-  void ExitInitializationMode() override {
-    // Compute initial output from initial input and parameter values
-    output_ = input_ * gain_;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Optional: Other initialization methods
-  // ---------------------------------------------------------------------------
-
-  // void SetupExperiment(cppfmu::FMIBoolean tolerance_defined,
-  //                      cppfmu::FMIFloat64 tolerance,
-  //                      cppfmu::FMIFloat64 start_time,
-  //                      cppfmu::FMIBoolean stop_time_defined,
-  //                      cppfmu::FMIFloat64 stop_time) override {}
-
-  // void EnterInitializationMode() override {}
-  // void Terminate() override {}
-  // void Reset() override {}
-
-  // ---------------------------------------------------------------------------
-  // Model Exchange stubs - Required by CPPFMU interface but not called for
-  // Co-Simulation FMUs. For CS, time advances via DoStep(), not SetTime().
-  // ---------------------------------------------------------------------------
-
-  void SetTime(cppfmu::FMIFloat64 time) override { time_ = time; }  // ME only
-  void GetContinuousStates(cppfmu::FMIFloat64*, std::size_t) const override {}
-  void SetContinuousStates(const cppfmu::FMIFloat64*, std::size_t) override {}
-  void GetContinuousStateDerivatives(cppfmu::FMIFloat64*,
-                                     std::size_t) const override {}
-  void GetNominalsOfContinuousStates(cppfmu::FMIFloat64*,
-                                     std::size_t) const override {}
-  void GetNumberOfContinuousStates(std::size_t& n) const override { n = 0; }
-  void GetNumberOfEventIndicators(std::size_t& n) const override { n = 0; }
-  void GetEventIndicators(cppfmu::FMIFloat64*, std::size_t) const override {}
-
-  void UpdateDiscreteStates(cppfmu::FMIBoolean* discrete_states_need_update,
-                            cppfmu::FMIBoolean* terminate_simulation,
-                            cppfmu::FMIBoolean* nominal_continuous_states_changed,
-                            cppfmu::FMIBoolean* values_of_continuous_states_changed,
-                            cppfmu::FMIBoolean* next_event_time_defined,
-                            cppfmu::FMIFloat64*) override {
-    *discrete_states_need_update = cppfmu::FMIFalse;
-    *terminate_simulation = cppfmu::FMIFalse;
-    *nominal_continuous_states_changed = cppfmu::FMIFalse;
-    *values_of_continuous_states_changed = cppfmu::FMIFalse;
-    *next_event_time_defined = cppfmu::FMIFalse;
-  }
-
-  void GetFMUstate(fmi3FMUState&) override {}
-  void SetFMUstate(const fmi3FMUState&) override {}
-  void FreeFMUstate(fmi3FMUState&) override {}
-  size_t SerializedFMUstateSize(const fmi3FMUState&) override { return 0; }
-  void SerializeFMUstate(const fmi3FMUState&, fmi3Byte[], size_t) override {}
-  void DeSerializeFMUstate(const fmi3Byte[], size_t, fmi3FMUState&) override {}
-
- private:
-  // ---------------------------------------------------------------------------
-  // Member Variables
-  // ---------------------------------------------------------------------------
-
-  double time_;     // Current simulation time
-  double input_;    // Input variable
-  double gain_;     // Parameter (tunable)
-  double output_;   // Output variable
 };
 
-}  // namespace
-
 // =============================================================================
-// Factory Function
+// FMI 3.0 Core Functions
 // =============================================================================
-// This function is called by the FMI runtime to create an instance of the FMU.
-//
-// Note: The FMI 3.0 version of CPPFMU uses std::unique_ptr directly, unlike the
-// FMI 2.0 version which had cppfmu::AllocateUnique() with a custom Memory
-// allocator. The comment in cppfmu_cs.hpp mentioning AllocateUnique is outdated.
 
-std::unique_ptr<cppfmu::SlaveInstance> CppfmuInstantiateSlave(
-    cppfmu::FMIString /*instance_name*/,
-    cppfmu::FMIString /*fmu_guid*/,
-    cppfmu::FMIString /*fmu_resource_location*/,
-    cppfmu::FMIString /*mime_type*/,
-    cppfmu::FMIFloat64 /*timeout*/,
-    cppfmu::FMIBoolean /*visible*/,
-    cppfmu::FMIBoolean /*interactive*/,
-    const cppfmu::Logger& /*logger*/) {
-  return std::make_unique<TemplateFmu>();
+extern "C" {
+
+// -----------------------------------------------------------------------------
+// Version
+// -----------------------------------------------------------------------------
+
+const char* fmi3GetVersion() {
+  return "3.0";
 }
+
+// -----------------------------------------------------------------------------
+// Instance Creation and Destruction
+// -----------------------------------------------------------------------------
+
+fmi3Instance fmi3InstantiateCoSimulation(
+    fmi3String instance_name,
+    fmi3String /*instantiation_token*/,
+    fmi3String /*resource_path*/,
+    fmi3Boolean /*visible*/,
+    fmi3Boolean /*logging_on*/,
+    fmi3Boolean /*event_mode_used*/,
+    fmi3Boolean /*early_return_allowed*/,
+    const fmi3ValueReference /*required_intermediate_variables*/[],
+    size_t /*n_required_intermediate_variables*/,
+    fmi3InstanceEnvironment instance_environment,
+    fmi3LogMessageCallback log_message,
+    fmi3IntermediateUpdateCallback /*intermediate_update*/) {
+  auto* instance = new FmuInstance();
+  instance->instance_name = instance_name ? instance_name : "";
+  instance->log_message = log_message;
+  instance->instance_environment = instance_environment;
+  return instance;
+}
+
+void fmi3FreeInstance(fmi3Instance instance) {
+  delete static_cast<FmuInstance*>(instance);
+}
+
+// -----------------------------------------------------------------------------
+// Initialization
+// -----------------------------------------------------------------------------
+
+fmi3Status fmi3EnterInitializationMode(
+    fmi3Instance instance,
+    fmi3Boolean /*tolerance_defined*/,
+    fmi3Float64 /*tolerance*/,
+    fmi3Float64 start_time,
+    fmi3Boolean /*stop_time_defined*/,
+    fmi3Float64 /*stop_time*/) {
+  if (!instance) return fmi3Error;
+  auto* fmu = static_cast<FmuInstance*>(instance);
+  fmu->time = start_time;
+  return fmi3OK;
+}
+
+fmi3Status fmi3ExitInitializationMode(fmi3Instance instance) {
+  if (!instance) return fmi3Error;
+  auto* fmu = static_cast<FmuInstance*>(instance);
+
+  // Compute initial output from initial input and parameter values
+  fmu->output = fmu->input * fmu->gain;
+
+  return fmi3OK;
+}
+
+// -----------------------------------------------------------------------------
+// Simulation Step
+// -----------------------------------------------------------------------------
+
+fmi3Status fmi3DoStep(
+    fmi3Instance instance,
+    fmi3Float64 current_communication_point,
+    fmi3Float64 communication_step_size,
+    fmi3Boolean /*no_set_fmu_state_prior_to_current_point*/,
+    fmi3Boolean* event_handling_needed,
+    fmi3Boolean* terminate_simulation,
+    fmi3Boolean* early_return,
+    fmi3Float64* last_successful_time) {
+  if (!instance) return fmi3Error;
+
+  auto* fmu = static_cast<FmuInstance*>(instance);
+
+  // Update time
+  fmu->time = current_communication_point + communication_step_size;
+
+  // ===========================================================================
+  // YOUR LOGIC HERE
+  // ===========================================================================
+  // This example simply multiplies the input by the gain.
+  // Replace this with your actual computation.
+
+  fmu->output = fmu->input * fmu->gain;
+
+  // ===========================================================================
+  // END OF YOUR LOGIC
+  // ===========================================================================
+
+  // Set output flags
+  if (event_handling_needed) *event_handling_needed = fmi3False;
+  if (terminate_simulation) *terminate_simulation = fmi3False;
+  if (early_return) *early_return = fmi3False;
+  if (last_successful_time) *last_successful_time = fmu->time;
+
+  return fmi3OK;
+}
+
+// -----------------------------------------------------------------------------
+// Termination and Reset
+// -----------------------------------------------------------------------------
+
+fmi3Status fmi3Terminate(fmi3Instance instance) {
+  if (!instance) return fmi3Error;
+  return fmi3OK;
+}
+
+fmi3Status fmi3Reset(fmi3Instance instance) {
+  if (!instance) return fmi3Error;
+  auto* fmu = static_cast<FmuInstance*>(instance);
+  fmu->time = 0.0;
+  fmu->input = 0.0;
+  fmu->gain = 1.0;
+  fmu->output = 0.0;
+  return fmi3OK;
+}
+
+// =============================================================================
+// Variable Getters and Setters
+// =============================================================================
+// Implement getters/setters for the variable types used by your FMU.
+// The scaffolding below shows the pattern for each type.
+// Add cases to the switch statements for your value references.
+
+// -----------------------------------------------------------------------------
+// Float64 (implemented for this template)
+// -----------------------------------------------------------------------------
+
+fmi3Status fmi3GetFloat64(
+    fmi3Instance instance,
+    const fmi3ValueReference value_references[],
+    size_t n_value_references,
+    fmi3Float64 values[],
+    size_t n_values) {
+  if (!instance) return fmi3Error;
+  if (n_values < n_value_references) return fmi3Error;
+
+  auto* fmu = static_cast<FmuInstance*>(instance);
+
+  for (size_t i = 0; i < n_value_references; ++i) {
+    switch (value_references[i]) {
+      case kVrTime:
+        values[i] = fmu->time;
+        break;
+      case kVrInput:
+        values[i] = fmu->input;
+        break;
+      case kVrGain:
+        values[i] = fmu->gain;
+        break;
+      case kVrOutput:
+        values[i] = fmu->output;
+        break;
+      // Add cases for additional Float64 variables here
+      default:
+        values[i] = 0.0;
+        break;
+    }
+  }
+  return fmi3OK;
+}
+
+fmi3Status fmi3SetFloat64(
+    fmi3Instance instance,
+    const fmi3ValueReference value_references[],
+    size_t n_value_references,
+    const fmi3Float64 values[],
+    size_t n_values) {
+  if (!instance) return fmi3Error;
+  if (n_values < n_value_references) return fmi3Error;
+
+  auto* fmu = static_cast<FmuInstance*>(instance);
+
+  for (size_t i = 0; i < n_value_references; ++i) {
+    switch (value_references[i]) {
+      // Note: kVrTime is not settable - time advances via fmi3DoStep
+      case kVrInput:
+        fmu->input = values[i];
+        break;
+      case kVrGain:
+        fmu->gain = values[i];
+        break;
+      // Add cases for additional Float64 variables here
+      default:
+        break;
+    }
+  }
+  return fmi3OK;
+}
+
+// -----------------------------------------------------------------------------
+// Other Variable Types
+// -----------------------------------------------------------------------------
+// To implement additional variable types (Int32, Boolean, String, etc.):
+// 1. Remove the stub from fmi3_cs_stubs.cpp for that type
+// 2. Add your implementation here following the Float64 pattern above
+
+}  // extern "C"
