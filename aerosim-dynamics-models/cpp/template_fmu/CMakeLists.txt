@@ -1,5 +1,8 @@
 # Template FMU CMake Build Configuration
 #
+# Uses the FMI 3.0 C API directly with headers from the official FMI standard:
+# https://github.com/modelica/fmi-standard
+#
 # To create a new FMU from this template:
 # 1. Copy this directory and rename it
 # 2. Update FMU_MODEL_NAME below to match your new FMU name
@@ -17,10 +20,15 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # FMU Configuration - UPDATE THIS FOR YOUR FMU
 # =============================================================================
 set(FMU_MODEL_NAME "template_fmu")
-set(FMU_SOURCE_FILE "template_fmu.cpp")
+
+# Source files: FMU implementation + reusable FMI 3.0 CS stubs
+set(FMU_SOURCES
+    template_fmu.cpp
+    fmi3_cs_stubs.cpp
+)
 
 # =============================================================================
-# Fetch CPPFMU (FMI 3.0) from PythonFMU3 repository
+# Fetch FMI 3.0 Headers from Official FMI Standard Repository
 # =============================================================================
 include(FetchContent)
 
@@ -29,15 +37,15 @@ if(POLICY CMP0169)
 endif()
 
 FetchContent_Declare(
-    pythonfmu3
-    GIT_REPOSITORY https://github.com/stephensmith25/PythonFMU3.git
-    GIT_TAG        master
+    fmi3_headers
+    GIT_REPOSITORY https://github.com/modelica/fmi-standard.git
+    GIT_TAG        v3.0.2
     EXCLUDE_FROM_ALL
 )
-FetchContent_MakeAvailable(pythonfmu3)
+FetchContent_MakeAvailable(fmi3_headers)
 
-set(CPPFMU_SOURCE_DIR "${pythonfmu3_SOURCE_DIR}/pythonfmu3/pythonfmu-export/src")
-message(STATUS "Using CPPFMU sources from: ${CPPFMU_SOURCE_DIR}")
+set(FMI3_INCLUDE_DIR "${fmi3_headers_SOURCE_DIR}/headers")
+message(STATUS "Using FMI 3.0 headers from: ${FMI3_INCLUDE_DIR}")
 
 # =============================================================================
 # Platform Detection
@@ -54,22 +62,12 @@ endif()
 # Build the FMU Shared Library
 # =============================================================================
 add_library(${FMU_MODEL_NAME} SHARED
-    ${FMU_SOURCE_FILE}
-    ${CPPFMU_SOURCE_DIR}/cppfmu/cppfmu_cs.cpp
-    ${CPPFMU_SOURCE_DIR}/cppfmu/fmi_functions.cpp
+    ${FMU_SOURCES}
 )
 
 target_include_directories(${FMU_MODEL_NAME} PRIVATE
-    ${CPPFMU_SOURCE_DIR}
+    ${FMI3_INCLUDE_DIR}
 )
-
-# Suppress MSVC warnings for unimplemented optional FMI 3.0 features in CPPFMU
-if(MSVC)
-    set_source_files_properties(
-        ${CPPFMU_SOURCE_DIR}/cppfmu/fmi_functions.cpp
-        PROPERTIES COMPILE_FLAGS "/wd4297"
-    )
-endif()
 
 set_target_properties(${FMU_MODEL_NAME} PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/binaries/${FMU_PLATFORM}"
