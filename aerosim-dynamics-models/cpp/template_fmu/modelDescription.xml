@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template FMU Model Description
+
+  This file defines the FMU's interface: its variables, types, and capabilities.
+  Update this file when adding or modifying FMU variables.
+
+  Key attributes to update when creating a new FMU:
+  - modelName: Human-readable name
+  - instantiationToken: Unique identifier (can be any string)
+  - modelIdentifier: Must match the shared library name (without extension)
+
+  Value reference conventions used in this template:
+  - 0: Time (independent, required by FMI 3.0)
+  - 1-99: Inputs
+  - 100-199: Parameters
+  - 200-299: Outputs
+-->
+<fmiModelDescription
+    fmiVersion="3.0"
+    modelName="template_fmu"
+    instantiationToken="{template-fmu-guid}"
+    description="Template FMU - multiply input by gain"
+    author="AeroSim"
+    generationTool="CPPFMU"
+    variableNamingConvention="structured">
+
+    <CoSimulation
+        modelIdentifier="template_fmu"
+        canHandleVariableCommunicationStepSize="true"
+        canBeInstantiatedOnlyOncePerProcess="false"
+        canGetAndSetFMUState="false"
+        canSerializeFMUState="false"
+        providesDirectionalDerivatives="false"
+        providesAdjointDerivatives="false"/>
+
+    <DefaultExperiment startTime="0.0" stepSize="0.01"/>
+
+    <ModelVariables>
+        <!--
+          Variable Types:
+          - Float64, Float32: Floating point numbers
+          - Int32, Int64, UInt64: Integers
+          - Boolean: True/false
+          - String: Text
+
+          Causality:
+          - input: Set by simulation environment
+          - output: Computed by FMU
+          - parameter: Tunable value (can be set before/during simulation)
+          - independent: Time variable (exactly one required in FMI 3.0)
+
+          Variability:
+          - continuous: Can change at any time
+          - discrete: Changes at events
+          - tunable: Can be changed between steps
+          - constant: Never changes
+        -->
+
+        <!-- Independent time variable (required by FMI 3.0) -->
+        <Float64
+            name="time"
+            valueReference="0"
+            causality="independent"
+            variability="continuous"
+            description="Simulation time"/>
+
+        <!-- Inputs (valueReference 1-99) -->
+        <Float64
+            name="input"
+            valueReference="1"
+            causality="input"
+            variability="continuous"
+            start="0.0"
+            description="Input value to be multiplied by gain"/>
+
+        <!-- Parameters (valueReference 100-199) -->
+        <Float64
+            name="gain"
+            valueReference="100"
+            causality="parameter"
+            variability="tunable"
+            start="1.0"
+            description="Gain multiplier"/>
+
+        <!-- Outputs (valueReference 200-299) -->
+        <Float64
+            name="output"
+            valueReference="200"
+            causality="output"
+            variability="continuous"
+            initial="exact"
+            start="0.0"
+            description="Output = input * gain"/>
+    </ModelVariables>
+
+    <ModelStructure>
+        <!-- List all output valueReferences here -->
+        <Output valueReference="200"/>
+    </ModelStructure>
+</fmiModelDescription>
