@@ -51,3 +51,103 @@ impl Metadata {
         Ok(dict.into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_metadata_new_with_defaults() {
+        let metadata = Metadata::new("test_topic", "TestType", None, None);
+
+        assert_eq!(metadata.topic, "test_topic");
+        assert_eq!(metadata.type_name, "TestType");
+        // When timestamp_sim is None, it should be set to sentinel value
+        assert_eq!(metadata.timestamp_sim.sec, SENTINEL_SECONDS);
+        assert_eq!(metadata.timestamp_sim.nanosec, 0);
+        // timestamp_platform should be set to current time (non-negative)
+        assert!(metadata.timestamp_platform.sec >= 0);
+    }
+
+    #[test]
+    fn test_metadata_new_with_timestamps() {
+        let sim_time = TimeStamp::new(100, 500);
+        let platform_time = TimeStamp::new(200, 1000);
+        let metadata = Metadata::new("topic", "Type", Some(sim_time), Some(platform_time));
+
+        assert_eq!(metadata.topic, "topic");
+        assert_eq!(metadata.type_name, "Type");
+        assert_eq!(metadata.timestamp_sim.sec, 100);
+        assert_eq!(metadata.timestamp_sim.nanosec, 500);
+        assert_eq!(metadata.timestamp_platform.sec, 200);
+        assert_eq!(metadata.timestamp_platform.nanosec, 1000);
+    }
+
+    #[test]
+    fn test_metadata_is_sim_time_valid_with_valid_time() {
+        let sim_time = TimeStamp::new(0, 0);
+        let metadata = Metadata::new("topic", "Type", Some(sim_time), None);
+
+        assert!(metadata.is_sim_time_valid());
+    }
+
+    #[test]
+    fn test_metadata_is_sim_time_valid_with_positive_time() {
+        let sim_time = TimeStamp::new(100, 500);
+        let metadata = Metadata::new("topic", "Type", Some(sim_time), None);
+
+        assert!(metadata.is_sim_time_valid());
+    }
+
+    #[test]
+    fn test_metadata_is_sim_time_valid_with_sentinel() {
+        let metadata = Metadata::new("topic", "Type", None, None);
+
+        assert!(!metadata.is_sim_time_valid());
+    }
+
+    #[test]
+    fn test_metadata_serialize_deserialize() {
+        let sim_time = TimeStamp::new(50, 250);
+        let platform_time = TimeStamp::new(1000, 500);
+        let original = Metadata::new("ser_topic", "SerType", Some(sim_time), Some(platform_time));
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: Metadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.topic, original.topic);
+        assert_eq!(deserialized.type_name, original.type_name);
+        assert_eq!(deserialized.timestamp_sim, original.timestamp_sim);
+        assert_eq!(deserialized.timestamp_platform, original.timestamp_platform);
+    }
+
+    #[test]
+    fn test_metadata_clone() {
+        let metadata = Metadata::new("clone_topic", "CloneType", None, None);
+        let cloned = metadata.clone();
+
+        assert_eq!(cloned.topic, metadata.topic);
+        assert_eq!(cloned.type_name, metadata.type_name);
+        assert_eq!(cloned.timestamp_sim, metadata.timestamp_sim);
+        assert_eq!(cloned.timestamp_platform, metadata.timestamp_platform);
+    }
+
+    #[test]
+    fn test_metadata_equality() {
+        let sim_time = TimeStamp::new(10, 20);
+        let platform_time = TimeStamp::new(30, 40);
+        let meta1 = Metadata::new("topic", "Type", Some(sim_time), Some(platform_time));
+        let meta2 = Metadata::new("topic", "Type", Some(sim_time), Some(platform_time));
+
+        assert_eq!(meta1, meta2);
+    }
+
+    #[test]
+    fn test_metadata_inequality() {
+        let meta1 = Metadata::new("topic1", "Type", None, None);
+        let meta2 = Metadata::new("topic2", "Type", None, None);
+
+        assert_ne!(meta1, meta2);
+    }
+}
