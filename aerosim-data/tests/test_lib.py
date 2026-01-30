@@ -1,5 +1,6 @@
 import pytest
 
+from aerosim_data import middleware as aerosim_middleware
 from aerosim_data import types as aerosim_types
 from types import SimpleNamespace
 
@@ -289,6 +290,227 @@ def test_vehicle_state_to_dict():
     assert vehicle_state_dict["acceleration"] == acceleration.to_dict()
     assert vehicle_state_dict["angular_velocity"] == angular_velocity.to_dict()
     assert vehicle_state_dict["angular_acceleration"] == angular_acceleration.to_dict()
+
+## Middleware and Serializer Tests
+
+def test_metadata_creation():
+    metadata = aerosim_middleware.Metadata("test_topic", "TestType")
+    assert metadata.topic == "test_topic"
+    assert metadata.type_name == "TestType"
+
+def test_metadata_with_timestamps():
+    sim_time = aerosim_types.TimeStamp(100, 500)
+    platform_time = aerosim_types.TimeStamp(200, 1000)
+    metadata = aerosim_middleware.Metadata("topic", "Type", sim_time, platform_time)
+    assert metadata.topic == "topic"
+    assert metadata.type_name == "Type"
+    assert metadata.timestamp_sim.sec == 100
+    assert metadata.timestamp_sim.nanosec == 500
+    assert metadata.timestamp_platform.sec == 200
+    assert metadata.timestamp_platform.nanosec == 1000
+
+def test_metadata_is_sim_time_valid():
+    # Valid sim time (positive)
+    valid_metadata = aerosim_middleware.Metadata(
+        "topic", "Type", aerosim_types.TimeStamp(10, 0), None
+    )
+    assert valid_metadata.is_sim_time_valid()
+
+    # Invalid sim time (default sentinel)
+    invalid_metadata = aerosim_middleware.Metadata("topic", "Type", None, None)
+    assert not invalid_metadata.is_sim_time_valid()
+
+def test_metadata_to_dict():
+    sim_time = aerosim_types.TimeStamp(50, 250)
+    platform_time = aerosim_types.TimeStamp(1000, 500)
+    metadata = aerosim_middleware.Metadata("dict_topic", "DictType", sim_time, platform_time)
+    metadata_dict = metadata.to_dict()
+    assert metadata_dict["topic"] == "dict_topic"
+    assert metadata_dict["type_name"] == "DictType"
+    assert metadata_dict["timestamp_sim"]["sec"] == 50
+    assert metadata_dict["timestamp_sim"]["nanosec"] == 250
+
+
+# Kafka Serializer Tests (if kafka feature is enabled)
+def test_kafka_serializer_creation():
+    try:
+        serializer = aerosim_middleware.KafkaSerializer()
+        assert serializer is not None
+    except AttributeError:
+        pytest.skip("Kafka feature not enabled")
+
+def test_kafka_serializer_serialize_message():
+    try:
+        serializer = aerosim_middleware.KafkaSerializer()
+        metadata = aerosim_middleware.Metadata("test_topic", "aerosim::types::JsonData")
+        data = aerosim_types.JsonData({"key": "value", "number": 42})
+
+        payload = serializer.serialize_message(metadata, data)
+        assert payload is not None
+        assert isinstance(payload, bytes)
+        assert len(payload) > 0
+    except AttributeError:
+        pytest.skip("Kafka feature not enabled")
+
+def test_kafka_serializer_roundtrip():
+    try:
+        serializer = aerosim_middleware.KafkaSerializer()
+        metadata = aerosim_middleware.Metadata("roundtrip_topic", "aerosim::types::JsonData")
+        original_data = aerosim_types.JsonData({"test": "data", "value": 123})
+
+        payload = serializer.serialize_message(metadata, original_data)
+        assert payload is not None
+
+        deserialized_meta, deserialized_data = serializer.deserialize_message(
+            aerosim_types.JsonData, payload
+        )
+        assert deserialized_meta.topic == "roundtrip_topic"
+        assert deserialized_meta.type_name == "aerosim::types::JsonData"
+        assert deserialized_data.get_data()["test"] == "data"
+        assert deserialized_data.get_data()["value"] == 123
+    except AttributeError:
+        pytest.skip("Kafka feature not enabled")
+
+def test_kafka_serializer_deserialize_metadata():
+    try:
+        serializer = aerosim_middleware.KafkaSerializer()
+        metadata = aerosim_middleware.Metadata("meta_topic", "aerosim::types::JsonData")
+        data = aerosim_types.JsonData({"key": "value"})
+
+        payload = serializer.serialize_message(metadata, data)
+        deserialized_meta = serializer.deserialize_metadata(payload)
+
+        assert deserialized_meta is not None
+        assert deserialized_meta.topic == "meta_topic"
+        assert deserialized_meta.type_name == "aerosim::types::JsonData"
+    except AttributeError:
+        pytest.skip("Kafka feature not enabled")
+
+def test_kafka_serializer_deserialize_data():
+    try:
+        serializer = aerosim_middleware.KafkaSerializer()
+        metadata = aerosim_middleware.Metadata("data_topic", "aerosim::types::JsonData")
+        data = aerosim_types.JsonData({"extracted": True})
+
+        payload = serializer.serialize_message(metadata, data)
+        deserialized_data = serializer.deserialize_data(aerosim_types.JsonData, payload)
+
+        assert deserialized_data is not None
+        assert deserialized_data.get_data()["extracted"]
+    except AttributeError:
+        pytest.skip("Kafka feature not enabled")
+
+
+# Zenoh Serializer Tests (if zenoh feature is enabled)
+def test_zenoh_serializer_creation():
+    try:
+        serializer = aerosim_middleware.ZenohSerializer()
+        assert serializer is not None
+    except AttributeError:
+        pytest.skip("Zenoh feature not enabled")
+
+def test_zenoh_serializer_serialize_message():
+    try:
+        serializer = aerosim_middleware.ZenohSerializer()
+        metadata = aerosim_middleware.Metadata("zenoh_topic", "aerosim::types::JsonData")
+        data = aerosim_types.JsonData({"zenoh": "test"})
+
+        payload = serializer.serialize_message(metadata, data)
+        assert payload is not None
+        assert isinstance(payload, bytes)
+        assert len(payload) > 0
+    except AttributeError:
+        pytest.skip("Zenoh feature not enabled")
+
+def test_zenoh_serializer_roundtrip():
+    try:
+        serializer = aerosim_middleware.ZenohSerializer()
+        metadata = aerosim_middleware.Metadata("zenoh_roundtrip", "aerosim::types::JsonData")
+        original_data = aerosim_types.JsonData({"zenoh_key": "zenoh_value"})
+
+        payload = serializer.serialize_message(metadata, original_data)
+        assert payload is not None
+
+        deserialized_meta, deserialized_data = serializer.deserialize_message(
+            aerosim_types.JsonData, payload
+        )
+        assert deserialized_meta.topic == "zenoh_roundtrip"
+        assert deserialized_data.get_data()["zenoh_key"] == "zenoh_value"
+    except AttributeError:
+        pytest.skip("Zenoh feature not enabled")
+
+
+# Bincode Serializer Tests
+def test_bincode_serializer_creation():
+    try:
+        serializer = aerosim_middleware.BincodeSerializer()
+        assert serializer is not None
+    except AttributeError:
+        pytest.skip("BincodeSerializer not available")
+
+def test_bincode_serializer_serialize_message():
+    try:
+        serializer = aerosim_middleware.BincodeSerializer()
+        metadata = aerosim_middleware.Metadata("bincode_topic", "aerosim::types::JsonData")
+        data = aerosim_types.JsonData({"bincode": "test"})
+
+        payload = serializer.serialize_message(metadata, data)
+        assert payload is not None
+        assert isinstance(payload, bytes)
+    except AttributeError:
+        pytest.skip("BincodeSerializer not available")
+
+def test_bincode_serializer_with_image():
+    try:
+        serializer = aerosim_middleware.BincodeSerializer()
+        metadata = aerosim_middleware.Metadata("camera/rgb", "aerosim::types::Image")
+
+        # Create a small test image
+        width = 4
+        height = 4
+        camera_info = aerosim_types.CameraInfo(
+            width, height, "plumb_bob",
+            [0.0] * 5,
+            [1.0, 0.0, 2.0, 0.0, 1.0, 2.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 2.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        )
+        encoding = aerosim_types.ImageEncoding.RGB8
+        step = width * 3
+        data = [i % 256 for i in range(width * height * 3)]
+        image = aerosim_types.Image(camera_info, height, width, encoding, 0, step, data)
+
+        payload = serializer.serialize_message(metadata, image)
+        assert payload is not None
+        assert isinstance(payload, bytes)
+
+        deserialized_meta, deserialized_image = serializer.deserialize_message(
+            aerosim_types.Image, payload
+        )
+        assert deserialized_meta.topic == "camera/rgb"
+        assert deserialized_image.width == width
+        assert deserialized_image.height == height
+    except AttributeError:
+        pytest.skip("BincodeSerializer not available")
+
+
+# Kafka Middleware Tests (creation only - no network required)
+def test_kafka_middleware_creation():
+    try:
+        middleware = aerosim_middleware.KafkaMiddleware()
+        assert middleware is not None
+    except AttributeError:
+        pytest.skip("Kafka feature not enabled")
+
+
+# Zenoh Middleware Tests (creation only - no network required)
+def test_zenoh_middleware_creation():
+    try:
+        middleware = aerosim_middleware.ZenohMiddleware()
+        assert middleware is not None
+    except AttributeError:
+        pytest.skip("Zenoh feature not enabled")
+
 
 if __name__ == "__main__":
     pytest.main()

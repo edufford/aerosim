@@ -7,6 +7,22 @@ middleware = _aerosim_data.middleware
 Metadata = middleware.Metadata
 BincodeSerializer = middleware.BincodeSerializer
 
+# Feature-gated serializers (may not be available depending on build features)
+try:
+    KafkaSerializer = middleware.KafkaSerializer
+except AttributeError:
+    pass
+
+try:
+    ZenohSerializer = middleware.ZenohSerializer
+except AttributeError:
+    pass
+
+try:
+    DDSSerializer = middleware.DDSSerializer
+except AttributeError:
+    pass
+
 class Singleton(type):
     _instances = {}
     def __call__(cls, *args, **kwargs):

@@ -382,3 +382,125 @@ impl ZenohSerializer {
         self.pydeserialize_to_json_impl(py, &serializer, type_name, payload)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    struct TestData {
+        id: u32,
+        name: String,
+        value: f64,
+    }
+
+    #[test]
+    fn test_zenoh_serializer_roundtrip() {
+        let serializer = ZenohSerializer;
+        let original = TestData {
+            id: 42,
+            name: "test".to_string(),
+            value: 3.14,
+        };
+
+        let serialized = serializer.serialize(&original);
+        assert!(serialized.is_some());
+
+        let deserialized: Option<TestData> = serializer.deserialize(&serialized.unwrap());
+        assert!(deserialized.is_some());
+        assert_eq!(deserialized.unwrap(), original);
+    }
+
+    #[test]
+    fn test_zenoh_serializer_json_format() {
+        let serializer = ZenohSerializer;
+        let data = TestData {
+            id: 1,
+            name: "json_test".to_string(),
+            value: 2.5,
+        };
+
+        let serialized = serializer.serialize(&data).unwrap();
+        let json_str = String::from_utf8(serialized).unwrap();
+
+        // Verify it's valid JSON
+        assert!(json_str.contains("\"id\":1"));
+        assert!(json_str.contains("\"name\":\"json_test\""));
+        assert!(json_str.contains("\"value\":2.5"));
+    }
+
+    #[test]
+    fn test_zenoh_serializer_deserialize_invalid_json() {
+        let serializer = ZenohSerializer;
+        let invalid_json = b"not valid json{{{";
+        let result: Option<TestData> = serializer.deserialize(invalid_json);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_zenoh_serializer_returns_self() {
+        let serializer = ZenohSerializer;
+        let returned = serializer.serializer();
+        match returned {
+            SerializerEnum::ZenohSerializer(_) => {}
+            _ => panic!("Expected ZenohSerializer variant"),
+        }
+    }
+
+    #[test]
+    fn test_zenoh_serializer_serialize_message_with_metadata() {
+        let serializer = ZenohSerializer;
+        let metadata = Metadata::new("test_topic", "TestData", None, None);
+        let data = TestData {
+            id: 100,
+            name: "message_test".to_string(),
+            value: 99.9,
+        };
+
+        let payload = serializer.serialize_message(&metadata, &data);
+        assert!(payload.is_some());
+
+        let (deserialized_meta, deserialized_data): (Metadata, TestData) =
+            serializer.deserialize_message(&payload.unwrap()).unwrap();
+
+        assert_eq!(deserialized_meta.topic, "test_topic");
+        assert_eq!(deserialized_meta.type_name, "TestData");
+        assert_eq!(deserialized_data, data);
+    }
+
+    #[test]
+    fn test_zenoh_serializer_deserialize_metadata_only() {
+        let serializer = ZenohSerializer;
+        let metadata = Metadata::new("meta_topic", "MetaType", None, None);
+        let data = TestData {
+            id: 1,
+            name: "test".to_string(),
+            value: 1.0,
+        };
+
+        let payload = serializer.serialize_message(&metadata, &data).unwrap();
+        let deserialized_meta = serializer.deserialize_metadata(&payload);
+
+        assert!(deserialized_meta.is_some());
+        let meta = deserialized_meta.unwrap();
+        assert_eq!(meta.topic, "meta_topic");
+        assert_eq!(meta.type_name, "MetaType");
+    }
+
+    #[test]
+    fn test_zenoh_serializer_deserialize_data_only() {
+        let serializer = ZenohSerializer;
+        let metadata = Metadata::new("data_topic", "DataType", None, None);
+        let data = TestData {
+            id: 55,
+            name: "data_only".to_string(),
+            value: 55.5,
+        };
+
+        let payload = serializer.serialize_message(&metadata, &data).unwrap();
+        let deserialized_data: Option<TestData> = serializer.deserialize_data(&payload);
+
+        assert!(deserialized_data.is_some());
+        assert_eq!(deserialized_data.unwrap(), data);
+    }
+}
