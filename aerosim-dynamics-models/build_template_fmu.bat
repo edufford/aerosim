@@ -1,11 +1,11 @@
 @echo off
-REM Build script for C++ eVTOL Effectors FMU (Windows)
+REM Build script for Template FMU
 
 set SCRIPT_DIR=%~dp0
-set CPP_DIR=%SCRIPT_DIR%cpp\evtol_effectors
+set CPP_DIR=%SCRIPT_DIR%cpp\template_fmu
 set BUILD_DIR=%CPP_DIR%\build
 
-echo Building C++ eVTOL Effectors FMU...
+echo Building Template FMU...
 
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 pushd "%BUILD_DIR%"
@@ -24,9 +24,9 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-if exist "%BUILD_DIR%\evtol_effectors_fmu_model_cpp.fmu" (
-    copy "%BUILD_DIR%\evtol_effectors_fmu_model_cpp.fmu" "%SCRIPT_DIR%..\examples\fmu\" >nul
-    echo Built and copied evtol_effectors_fmu_model_cpp.fmu to ..\examples\fmu
+if exist "%BUILD_DIR%\template_fmu.fmu" (
+    copy "%BUILD_DIR%\template_fmu.fmu" "%SCRIPT_DIR%..\examples\fmu\" >nul
+    echo Built and copied template_fmu.fmu to ..\examples\fmu
     popd
 ) else (
     echo Build failed - FMU file not found
