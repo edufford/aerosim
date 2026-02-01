@@ -78,41 +78,23 @@ def test_minimal_roundtrip_latency(transport):
     measurements = []
     roundtrip_complete = threading.Event()
 
+    # Shared timing data (avoids double serialization)
+    timing = {}
+
     # --- Node B: Echo service ---
     def echo_callback(raw_bytes: bytes):
         """Receive on forward topic, deserialize, re-serialize, publish to return."""
-        t_recv_b = time.perf_counter()
+        timing["t_recv_b"] = time.perf_counter()
 
         # Deserialize incoming message
-        _metadata, data = serializer.deserialize_message(aerosim_types.JsonData, raw_bytes)
-        t_deser_b = time.perf_counter()
+        _metadata, _data = serializer.deserialize_message(aerosim_types.JsonData, raw_bytes)
+        timing["t_deser_b"] = time.perf_counter()
 
-        json_data = data.get_data()
-
-        # Create echo with timing data
-        echo_data = aerosim_types.JsonData({
-            # Forward leg timings from Node A
-            "t_start_a": json_data.get("t_start_a"),
-            "t_ser_a": json_data.get("t_ser_a"),
-            # Forward leg timings from Node B
-            "t_recv_b": t_recv_b,
-            "t_deser_b": t_deser_b,
-        })
-
-        # Serialize echo
+        # Create and serialize echo (payload only, timestamps stored in shared dict)
+        echo_data = aerosim_types.JsonData({"payload": payload_str})
         metadata = mw.Metadata(return_topic, DATA_TYPE)
         echo_bytes = serializer.serialize_message(metadata, echo_data)
-        t_ser_b = time.perf_counter()
-
-        # Update echo with serialize time and publish
-        echo_data = aerosim_types.JsonData({
-            "t_start_a": json_data.get("t_start_a"),
-            "t_ser_a": json_data.get("t_ser_a"),
-            "t_recv_b": t_recv_b,
-            "t_deser_b": t_deser_b,
-            "t_ser_b": t_ser_b,
-        })
-        echo_bytes = serializer.serialize_message(metadata, echo_data)
+        timing["t_ser_b"] = time.perf_counter()
 
         middleware.publish_raw(DATA_TYPE, return_topic, echo_bytes)
 
@@ -122,30 +104,21 @@ def test_minimal_roundtrip_latency(transport):
         t_recv_a = time.perf_counter()
 
         # Deserialize echo message
-        _metadata, data = serializer.deserialize_message(aerosim_types.JsonData, raw_bytes)
+        _metadata, _data = serializer.deserialize_message(aerosim_types.JsonData, raw_bytes)
         t_deser_a = time.perf_counter()
 
-        json_data = data.get_data()
-
-        # Extract all timestamps
-        t_start_a = json_data.get("t_start_a", 0)
-        t_ser_a = json_data.get("t_ser_a", 0)
-        t_recv_b = json_data.get("t_recv_b", 0)
-        t_deser_b = json_data.get("t_deser_b", 0)
-        t_ser_b = json_data.get("t_ser_b", 0)
-
-        # Calculate timing breakdown (in ms)
+        # Calculate timing breakdown using shared dict (in ms)
         measurements.append({
             # Forward leg
-            "serialize_a": (t_ser_a - t_start_a) * 1000,
-            "transport_ab": (t_recv_b - t_ser_a) * 1000,
-            "deserialize_b": (t_deser_b - t_recv_b) * 1000,
+            "serialize_a": (timing["t_ser_a"] - timing["t_start_a"]) * 1000,
+            "transport_ab": (timing["t_recv_b"] - timing["t_ser_a"]) * 1000,
+            "deserialize_b": (timing["t_deser_b"] - timing["t_recv_b"]) * 1000,
             # Return leg
-            "serialize_b": (t_ser_b - t_deser_b) * 1000,
-            "transport_ba": (t_recv_a - t_ser_b) * 1000,
+            "serialize_b": (timing["t_ser_b"] - timing["t_deser_b"]) * 1000,
+            "transport_ba": (t_recv_a - timing["t_ser_b"]) * 1000,
             "deserialize_a": (t_deser_a - t_recv_a) * 1000,
             # Totals
-            "roundtrip": (t_deser_a - t_start_a) * 1000,
+            "roundtrip": (t_deser_a - timing["t_start_a"]) * 1000,
         })
         roundtrip_complete.set()
 
@@ -165,14 +138,11 @@ def test_minimal_roundtrip_latency(transport):
 
     # Warmup loop (not measured)
     roundtrip_complete.clear()
-    t_start = time.perf_counter()
-    warmup_msg = aerosim_types.JsonData({
-        "t_start_a": t_start,
-        "t_ser_a": t_start,
-        "payload": payload_str
-    })
+    timing["t_start_a"] = time.perf_counter()
+    warmup_msg = aerosim_types.JsonData({"payload": payload_str})
     metadata = mw.Metadata(forward_topic, DATA_TYPE)
     raw_bytes = serializer.serialize_message(metadata, warmup_msg)
+    timing["t_ser_a"] = time.perf_counter()
     middleware.publish_raw(DATA_TYPE, forward_topic, raw_bytes)
     roundtrip_complete.wait(timeout=30.0)
     measurements.clear()  # Discard warmup measurement
@@ -181,25 +151,14 @@ def test_minimal_roundtrip_latency(transport):
     for i in range(NUM_MESSAGES):
         roundtrip_complete.clear()
 
-        # Create message with timestamp and payload
-        t_start_a = time.perf_counter()
-        message = aerosim_types.JsonData({
-            "t_start_a": t_start_a,
-            "payload": payload_str
-        })
+        # Create message with payload (timestamps stored in shared dict)
+        timing["t_start_a"] = time.perf_counter()
+        message = aerosim_types.JsonData({"payload": payload_str})
 
         # Serialize
         metadata = mw.Metadata(forward_topic, DATA_TYPE)
         raw_bytes = serializer.serialize_message(metadata, message)
-        t_ser_a = time.perf_counter()
-
-        # Update message with serialization end time and re-serialize
-        message = aerosim_types.JsonData({
-            "t_start_a": t_start_a,
-            "t_ser_a": t_ser_a,
-            "payload": payload_str
-        })
-        raw_bytes = serializer.serialize_message(metadata, message)
+        timing["t_ser_a"] = time.perf_counter()
 
         # Publish
         middleware.publish_raw(DATA_TYPE, forward_topic, raw_bytes)

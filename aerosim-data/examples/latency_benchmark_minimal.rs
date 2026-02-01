@@ -45,6 +45,16 @@ struct TimingMeasurement {
     roundtrip_ms: f64,
 }
 
+/// Shared timing data (avoids double serialization)
+#[derive(Debug, Clone, Default)]
+struct Timing {
+    t_start_a: u64,
+    t_ser_a: u64,
+    t_recv_b: u64,
+    t_deser_b: u64,
+    t_ser_b: u64,
+}
+
 #[tokio::main]
 async fn main() {
     // Parse transport from command line
@@ -78,6 +88,7 @@ async fn main() {
     let measurements: Arc<Mutex<Vec<TimingMeasurement>>> = Arc::new(Mutex::new(Vec::new()));
     let roundtrip_complete = Arc::new(Notify::new());
     let done = Arc::new(AtomicBool::new(false));
+    let timing = Arc::new(Mutex::new(Timing::default()));
 
     // Reference time for all measurements (using Instant for monotonic timing)
     let ref_time = Instant::now();
@@ -88,6 +99,8 @@ async fn main() {
     let echo_type_name = type_name.to_string();
     let echo_ref_time = ref_time;
     let echo_done = done.clone();
+    let echo_timing = timing.clone();
+    let echo_payload = payload_str.clone();
 
     middleware
         .subscribe_raw(
@@ -106,39 +119,30 @@ async fn main() {
                 } else {
                     echo_middleware.get_serializer()
                 };
-                let (_metadata, data): (Metadata, JsonData) = echo_ser
+                let (_metadata, _data): (Metadata, JsonData) = echo_ser
                     .deserialize_message(raw_bytes)
                     .expect("Failed to deserialize");
                 let t_deser_b = echo_ref_time.elapsed().as_nanos() as u64;
 
-                let json_data = data.get_data().unwrap();
-                let t_start_a = json_data["t_start_a"].as_u64().unwrap_or(0);
-                let t_ser_a = json_data["t_ser_a"].as_u64().unwrap_or(0);
+                // Store timing in shared struct
+                if let Ok(mut t) = echo_timing.lock() {
+                    t.t_recv_b = t_recv_b;
+                    t.t_deser_b = t_deser_b;
+                }
 
-                // Create echo with timing data (first pass to measure serialize time)
+                // Create and serialize echo (payload only, timestamps in shared struct)
                 let echo_data = JsonData::new(json!({
-                    "t_start_a": t_start_a,
-                    "t_ser_a": t_ser_a,
-                    "t_recv_b": t_recv_b,
-                    "t_deser_b": t_deser_b,
+                    "payload": echo_payload.clone(),
                 }));
-
                 let metadata = Metadata::new(&echo_return_topic, &echo_type_name, None, None);
-                let _ = echo_ser.serialize_message(&metadata, &echo_data);
-                let t_ser_b = echo_ref_time.elapsed().as_nanos() as u64;
-
-                // Re-serialize with t_ser_b included
-                let echo_data_final = JsonData::new(json!({
-                    "t_start_a": t_start_a,
-                    "t_ser_a": t_ser_a,
-                    "t_recv_b": t_recv_b,
-                    "t_deser_b": t_deser_b,
-                    "t_ser_b": t_ser_b,
-                }));
-
                 let echo_bytes = echo_ser
-                    .serialize_message(&metadata, &echo_data_final)
+                    .serialize_message(&metadata, &echo_data)
                     .expect("Serialize failed");
+
+                // Store serialize time in shared struct
+                if let Ok(mut t) = echo_timing.lock() {
+                    t.t_ser_b = echo_ref_time.elapsed().as_nanos() as u64;
+                }
 
                 let mw = echo_middleware.clone();
                 let topic = echo_return_topic.clone();
@@ -158,6 +162,7 @@ async fn main() {
     let measure_measurements = measurements.clone();
     let measure_notify = roundtrip_complete.clone();
     let measure_ref_time = ref_time;
+    let measure_timing = timing.clone();
 
     middleware
         .subscribe_raw(
@@ -172,33 +177,26 @@ async fn main() {
                 } else {
                     measure_middleware.get_serializer()
                 };
-                let (_metadata, data): (Metadata, JsonData) = measure_ser
+                let (_metadata, _data): (Metadata, JsonData) = measure_ser
                     .deserialize_message(raw_bytes)
                     .expect("Failed to deserialize");
                 let t_deser_a = measure_ref_time.elapsed().as_nanos() as u64;
 
-                let json_data = data.get_data().unwrap();
+                // Calculate timing breakdown using shared struct (convert nanos to ms)
+                if let Ok(t) = measure_timing.lock() {
+                    let measurement = TimingMeasurement {
+                        serialize_a_ms: (t.t_ser_a - t.t_start_a) as f64 / 1_000_000.0,
+                        transport_ab_ms: (t.t_recv_b - t.t_ser_a) as f64 / 1_000_000.0,
+                        deserialize_b_ms: (t.t_deser_b - t.t_recv_b) as f64 / 1_000_000.0,
+                        serialize_b_ms: (t.t_ser_b - t.t_deser_b) as f64 / 1_000_000.0,
+                        transport_ba_ms: (t_recv_a - t.t_ser_b) as f64 / 1_000_000.0,
+                        deserialize_a_ms: (t_deser_a - t_recv_a) as f64 / 1_000_000.0,
+                        roundtrip_ms: (t_deser_a - t.t_start_a) as f64 / 1_000_000.0,
+                    };
 
-                // Extract all timestamps (in nanoseconds)
-                let t_start_a = json_data["t_start_a"].as_u64().unwrap_or(0);
-                let t_ser_a = json_data["t_ser_a"].as_u64().unwrap_or(0);
-                let t_recv_b = json_data["t_recv_b"].as_u64().unwrap_or(0);
-                let t_deser_b = json_data["t_deser_b"].as_u64().unwrap_or(0);
-                let t_ser_b = json_data["t_ser_b"].as_u64().unwrap_or(0);
-
-                // Calculate timing breakdown (convert nanos to ms)
-                let measurement = TimingMeasurement {
-                    serialize_a_ms: (t_ser_a - t_start_a) as f64 / 1_000_000.0,
-                    transport_ab_ms: (t_recv_b - t_ser_a) as f64 / 1_000_000.0,
-                    deserialize_b_ms: (t_deser_b - t_recv_b) as f64 / 1_000_000.0,
-                    serialize_b_ms: (t_ser_b - t_deser_b) as f64 / 1_000_000.0,
-                    transport_ba_ms: (t_recv_a - t_ser_b) as f64 / 1_000_000.0,
-                    deserialize_a_ms: (t_deser_a - t_recv_a) as f64 / 1_000_000.0,
-                    roundtrip_ms: (t_deser_a - t_start_a) as f64 / 1_000_000.0,
-                };
-
-                if let Ok(mut m) = measure_measurements.lock() {
-                    m.push(measurement);
+                    if let Ok(mut m) = measure_measurements.lock() {
+                        m.push(measurement);
+                    }
                 }
                 measure_notify.notify_one();
 
@@ -223,16 +221,19 @@ async fn main() {
 
     // --- Warmup loop (not measured) ---
     {
-        let t_start = ref_time.elapsed().as_nanos() as u64;
+        if let Ok(mut t) = timing.lock() {
+            t.t_start_a = ref_time.elapsed().as_nanos() as u64;
+        }
         let warmup_msg = JsonData::new(json!({
-            "t_start_a": t_start,
-            "t_ser_a": t_start,
             "payload": payload_str.clone(),
         }));
         let metadata = Metadata::new(&forward_topic, type_name, None, None);
         let raw_bytes = serializer
             .serialize_message(&metadata, &warmup_msg)
             .expect("Serialize failed");
+        if let Ok(mut t) = timing.lock() {
+            t.t_ser_a = ref_time.elapsed().as_nanos() as u64;
+        }
         middleware
             .publish_raw(type_name, &forward_topic, &raw_bytes)
             .await
@@ -249,27 +250,26 @@ async fn main() {
 
     // --- Measured loops ---
     for i in 0..NUM_MESSAGES {
-        // Create message with timestamp and payload
-        let t_start_a = ref_time.elapsed().as_nanos() as u64;
+        // Store start time in shared struct
+        if let Ok(mut t) = timing.lock() {
+            t.t_start_a = ref_time.elapsed().as_nanos() as u64;
+        }
+
+        // Create message with payload (timestamps stored in shared struct)
         let message = JsonData::new(json!({
-            "t_start_a": t_start_a,
             "payload": payload_str.clone(),
         }));
 
-        // Serialize (first pass to measure time)
+        // Serialize
         let metadata = Metadata::new(&forward_topic, type_name, None, None);
-        let _ = serializer.serialize_message(&metadata, &message);
-        let t_ser_a = ref_time.elapsed().as_nanos() as u64;
-
-        // Re-serialize with t_ser_a included
-        let message_final = JsonData::new(json!({
-            "t_start_a": t_start_a,
-            "t_ser_a": t_ser_a,
-            "payload": payload_str.clone(),
-        }));
         let raw_bytes = serializer
-            .serialize_message(&metadata, &message_final)
+            .serialize_message(&metadata, &message)
             .expect("Serialize failed");
+
+        // Store serialize time in shared struct
+        if let Ok(mut t) = timing.lock() {
+            t.t_ser_a = ref_time.elapsed().as_nanos() as u64;
+        }
 
         // Publish
         middleware
