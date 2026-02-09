@@ -179,7 +179,7 @@
                         }
                     },
                     {
-                        "id": "tilrotor_1",
+                        "id": "tiltrotor_1",
                         "relative_path": "generic_evtol/tiltrotor_1",
                         "transform": {
                             "translation": [
@@ -457,7 +457,7 @@
                         }
                     },
                     {
-                        "id": "tilrotor_1",
+                        "id": "tiltrotor_1",
                         "relative_path": "generic_evtol/tiltrotor_1",
                         "transform": {
                             "translation": [
