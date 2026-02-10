@@ -109,7 +109,7 @@
                 "effectors": [
                     {
                         "id": "propeller_front",
-                        "relative_path": "vehicle/propeller",
+                        "relative_path": "generic_airplane/propeller",
                         "transform": {
                             "translation": [
                                 0.0,
@@ -163,7 +163,7 @@
                 "effectors": [
                     {
                         "id": "propeller_front",
-                        "relative_path": "vehicle/propeller",
+                        "relative_path": "generic_airplane/propeller",
                         "transform": {
                             "translation": [
                                 0.0,
@@ -217,7 +217,7 @@
                 "effectors": [
                     {
                         "id": "propeller_front",
-                        "relative_path": "vehicle/propeller",
+                        "relative_path": "generic_airplane/propeller",
                         "transform": {
                             "translation": [
                                 0.0,
@@ -271,7 +271,7 @@
                 "effectors": [
                     {
                         "id": "propeller_front",
-                        "relative_path": "vehicle/propeller",
+                        "relative_path": "generic_airplane/propeller",
                         "transform": {
                             "translation": [
                                 0.0,
@@ -325,7 +325,7 @@
                 "effectors": [
                     {
                         "id": "propeller_front",
-                        "relative_path": "vehicle/propeller",
+                        "relative_path": "generic_airplane/propeller",
                         "transform": {
                             "translation": [
                                 0.0,
