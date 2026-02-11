@@ -508,6 +508,22 @@ fn handle_orchestrator_command_message(
             raw_payload: serde_json::to_string(&filtered_scene_graph)
                 .expect("Error serializing sene_graph message to JSON."),
         });
+    } else if command_str == "stop" {
+        info!(
+            "[aerosim.world.link] Processing stop command for renderer with Instance ID: {}.",
+            instance_id
+        );
+
+        // Forward the stop command to the payload queue so the renderer can detect it
+        let payload_timestamp: f64 = metadata.timestamp_platform.sec as f64
+            + metadata.timestamp_platform.nanosec as f64 / 1_000_000_000.0;
+
+        let mut payload_queue_lock = payload_queue.lock().unwrap();
+        payload_queue_lock.push(Payload {
+            timestamp: payload_timestamp,
+            raw_payload: serde_json::to_string(&msg_data)
+                .expect("Error serializing stop command to JSON."),
+        });
     }
 }
 
