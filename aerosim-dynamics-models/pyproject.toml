@@ -4,13 +4,13 @@ version = "0.1.0"
 description = "Add your description here"
 authors = [{ name = "Effendi Dufford", email = "effendi@aerosim.org" }]
 dependencies = [
-    "pythonfmu3>=0.1.15",
+    "pythonfmu3>=0.3.4",
     "numpy>=2.1.3",
     "jsbsim>=1.2.1",
     "scipy>=1.14.1",
 ]
 readme = "README.md"
-requires-python = "~= 3.12"  # pythonfmu3 is currently built with Python 3.12 and links to it on Linux
+requires-python = ">= 3.12"
 
 [build-system]
 requires = ["maturin>=1.2,<2.0"]
