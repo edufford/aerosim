@@ -259,12 +259,12 @@ class FirstFlight:
         autopilot_command = aerosim_types.AutopilotCommand(**self.ap_cmd)
         self.transport.publish(self.ap_cmd_topic, autopilot_command)
 
-    def run(self):
+    def run(self, stop_event):
         """Run the simulation loop"""
         logger.info("Starting simulation loop")
 
         try:
-            while self.running:
+            while self.running and not stop_event.is_set():
                 # Process any commands from aerosim-app
                 if command_queue:
                     with self.lock:
@@ -280,9 +280,11 @@ class FirstFlight:
             # Clean up
             if self.aerosim:
                 self.aerosim.stop()
+            if self.transport:
+                self.transport.close()
             logger.info("Simulation stopped")
 
-def run_simulation():
+def run_simulation(stop_event):
     """Run the simulation in a separate thread"""
     # Create the application
     program = FirstFlight()
@@ -292,7 +294,7 @@ def run_simulation():
         program.init()
 
         # Run the simulation loop
-        program.run()
+        program.run(stop_event)
     except Exception as e:
         logger.error(f"Error in simulation: {e}")
         traceback.print_exc()
@@ -315,7 +317,8 @@ async def run_websocket_servers():
 if __name__ == "__main__":
     try:
         # Start the simulation in a separate thread
-        sim_thread = threading.Thread(target=run_simulation, daemon=True)
+        stop_event = threading.Event()
+        sim_thread = threading.Thread(target=run_simulation, args=(stop_event,), daemon=True)
         sim_thread.start()
 
         # Start the WebSocket server in the main asyncio event loop
@@ -325,3 +328,7 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error: {e}")
         traceback.print_exc()
+    finally:
+        logger.info("Stopping simulation...")
+        stop_event.set()
+        sim_thread.join()
