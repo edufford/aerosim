@@ -337,12 +337,12 @@ class App:
             self.current_speed = cur_speed
             self.current_altitude = cur_altitude
 
-    def loop(self) -> None:
+    def loop(self, stop_event) -> None:
         """Main control loop for processing commands and updating simulation"""
         running = True
 
         try:
-            while running:
+            while running and not stop_event.is_set():
                 with self.lock:
                     veh_state_str = f"Alt: {self.current_altitude:.0f} ft Spd: {self.current_speed:.0f} ft/s"
 
@@ -488,20 +488,23 @@ async def run_websocket_servers():
     await asyncio.gather(*websocket_tasks)
 
 
-def run_simulation() -> None:
+def run_simulation(stop_event) -> None:
     """Run the simulation in a separate thread"""
     app = App()
     try:
         app.init()
-        app.loop()
+        app.loop(stop_event)
     finally:
         app.stop()
+        if app.transport:
+            app.transport.close()
 
 
 if __name__ == "__main__":
     try:
         # Start the simulation in a separate thread
-        sim_thread = threading.Thread(target=run_simulation, daemon=True)
+        stop_event = threading.Event()
+        sim_thread = threading.Thread(target=run_simulation, args=(stop_event,), daemon=True)
         sim_thread.start()
 
         # Start the WebSocket server in the main asyncio event loop
@@ -511,3 +514,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Unexpected error: {e}")
         traceback.print_exc()
+    finally:
+        print("Stopping simulation...")
+        stop_event.set()
+        sim_thread.join()
