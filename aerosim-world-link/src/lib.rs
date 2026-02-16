@@ -219,6 +219,10 @@ pub extern "C" fn publish_image_to_topic(
         encoding, // Hardcoded to BGRA on the renderer side.
         is_bigendian: 0,
         step: (width * 4) as u32, // Assuming there is no padding
+        // IMPORTANT: Must use Cow::Owned to copy the data. The `data` pointer comes from
+        // a GPU memory mapping that is unlocked/invalidated after this FFI call returns.
+        // The image is sent to an async channel and compressed later, so using Cow::Borrowed
+        // would create a use-after-free bug causing image corruption (horizontal black bands).
         data: Cow::Owned(image_data.to_vec()),
     };
 
