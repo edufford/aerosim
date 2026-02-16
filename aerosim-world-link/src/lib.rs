@@ -219,7 +219,7 @@ pub extern "C" fn publish_image_to_topic(
         encoding, // Hardcoded to BGRA on the renderer side.
         is_bigendian: 0,
         step: (width * 4) as u32, // Assuming there is no padding
-        data: Cow::Borrowed(image_data),
+        data: Cow::Owned(image_data.to_vec()),
     };
 
     info!("[aerosim.renderer] Publishing message: {} ", topic_str);
