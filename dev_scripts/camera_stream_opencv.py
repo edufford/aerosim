@@ -3,9 +3,21 @@ from aerosim_data import middleware
 
 import cv2
 import numpy as np
+import argparse
 from collections import deque
 from pathlib import Path
 from datetime import datetime
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description="Camera stream viewer with image capture")
+parser.add_argument(
+    "--transport",
+    type=str,
+    choices=["zenoh", "kafka"],
+    default="zenoh",
+    help="Middleware transport to use (default: zenoh)"
+)
+args = parser.parse_args()
 
 image_queue = deque(maxlen=1)
 serializer = middleware.BincodeSerializer()
@@ -32,12 +44,14 @@ def on_sensor_data(payload):
 
 
 # Set up middleware transport and subscribe to vehicle state
-transport = middleware.get_transport("zenoh")
+transport = middleware.get_transport(args.transport)
 transport.subscribe_raw(
     "aerosim::types::CompressedImage", "aerosim.renderer.responses", on_sensor_data
 )
 
-print(f"Camera stream viewer started. Images will be saved to: {output_dir.absolute()}")
+print(f"Camera stream viewer started")
+print(f"Transport: {args.transport}")
+print(f"Images will be saved to: {output_dir.absolute()}")
 print("Controls:")
 print("  's' - Save current frame")
 print("  ESC - Exit")
