@@ -15,7 +15,7 @@ parser.add_argument(
     type=str,
     choices=["zenoh", "kafka"],
     default="zenoh",
-    help="Middleware transport to use (default: zenoh)"
+    help="Middleware transport to use (default: zenoh)",
 )
 args = parser.parse_args()
 
@@ -28,13 +28,12 @@ cv2.namedWindow("Camera Preview")
 output_dir = Path("camera_captures")
 output_dir.mkdir(exist_ok=True)
 
-# Configuration for auto-saving
-AUTO_SAVE = False  # Set to False to only save on 's' keypress
+# Configuration for recording
+AUTO_SAVE = False  # Toggle with 's' key to start/stop recording
 save_counter = 0
 
 
 def on_sensor_data(payload):
-
     _, data = serializer.deserialize_message(aerosim_types.CompressedImage, payload)
 
     # Convert bytes to NumPy array
@@ -49,18 +48,26 @@ transport.subscribe_raw(
     "aerosim::types::CompressedImage", "aerosim.renderer.responses", on_sensor_data
 )
 
-print(f"Camera stream viewer started")
+print("Camera stream viewer started")
 print(f"Transport: {args.transport}")
 print(f"Images will be saved to: {output_dir.absolute()}")
 print("Controls:")
-print("  's' - Save current frame")
+print("  's' - Toggle recording on/off")
 print("  ESC - Exit")
-print(f"  AUTO_SAVE is {'ENABLED' if AUTO_SAVE else 'DISABLED'}")
+print(f"Recording: {'ON' if AUTO_SAVE else 'OFF'}")
 print()
 
 while True:
-    if image_queue:
+    # Check for key presses first
+    key = cv2.waitKey(20)
+    if key == 27:
+        break
+    elif key == ord("s"):
+        # Toggle recording on 's' keypress
+        AUTO_SAVE = not AUTO_SAVE
+        print(f"Recording: {'ON' if AUTO_SAVE else 'OFF'}")
 
+    if image_queue:
         image_rgb = image_queue.pop()
         cv2.imshow("Camera Preview", image_rgb)
 
@@ -70,17 +77,4 @@ while True:
             filename = output_dir / f"frame_{save_counter:05d}_{timestamp}.png"
             cv2.imwrite(str(filename), image_rgb)
             print(f"Saved: {filename.name}")
-            save_counter += 1
-
-    # Exit when pressing ESC
-    key = cv2.waitKey(20)
-    if key == 27:
-        break
-    elif key == ord('s'):
-        # Manual save on 's' keypress
-        if image_queue or 'image_rgb' in locals():
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            filename = output_dir / f"manual_{save_counter:05d}_{timestamp}.png"
-            cv2.imwrite(str(filename), image_rgb)
-            print(f"Manually saved: {filename.name}")
             save_counter += 1
