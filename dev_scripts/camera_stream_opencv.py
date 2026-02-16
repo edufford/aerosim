@@ -3,16 +3,37 @@ from aerosim_data import middleware
 
 import cv2
 import numpy as np
+import argparse
 from collections import deque
+from pathlib import Path
+from datetime import datetime
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description="Camera stream viewer with image capture")
+parser.add_argument(
+    "--transport",
+    type=str,
+    choices=["zenoh", "kafka"],
+    default="zenoh",
+    help="Middleware transport to use (default: zenoh)",
+)
+args = parser.parse_args()
 
 image_queue = deque(maxlen=1)
 serializer = middleware.BincodeSerializer()
 
 cv2.namedWindow("Camera Preview")
 
+# Setup output directory for saved images
+output_dir = Path("camera_captures")
+output_dir.mkdir(exist_ok=True)
+
+# Configuration for recording
+AUTO_SAVE = False  # Toggle with 's' key to start/stop recording
+save_counter = 0
+
 
 def on_sensor_data(payload):
-
     _, data = serializer.deserialize_message(aerosim_types.CompressedImage, payload)
 
     # Convert bytes to NumPy array
@@ -22,18 +43,38 @@ def on_sensor_data(payload):
 
 
 # Set up middleware transport and subscribe to vehicle state
-transport = middleware.get_transport("kafka")
+transport = middleware.get_transport(args.transport)
 transport.subscribe_raw(
     "aerosim::types::CompressedImage", "aerosim.renderer.responses", on_sensor_data
 )
 
+print("Camera stream viewer started")
+print(f"Transport: {args.transport}")
+print(f"Images will be saved to: {output_dir.absolute()}")
+print("Controls:")
+print("  's' - Toggle recording on/off")
+print("  ESC - Exit")
+print(f"Recording: {'ON' if AUTO_SAVE else 'OFF'}")
+print()
+
 while True:
-    if image_queue:
-
-        image_rgb = image_queue.pop()
-        cv2.imshow("Camera Preview", image_rgb)
-
-    # Exit when pressing ESC
+    # Check for key presses first
     key = cv2.waitKey(20)
     if key == 27:
         break
+    elif key == ord("s"):
+        # Toggle recording on 's' keypress
+        AUTO_SAVE = not AUTO_SAVE
+        print(f"Recording: {'ON' if AUTO_SAVE else 'OFF'}")
+
+    if image_queue:
+        image_rgb = image_queue.pop()
+        cv2.imshow("Camera Preview", image_rgb)
+
+        # Auto-save if enabled
+        if AUTO_SAVE:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            filename = output_dir / f"frame_{save_counter:05d}_{timestamp}.png"
+            cv2.imwrite(str(filename), image_rgb)
+            print(f"Saved: {filename.name}")
+            save_counter += 1
