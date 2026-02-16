@@ -174,13 +174,19 @@ impl Image {
     }
 
     pub fn compress(&self) -> PyResult<CompressedImage> {
-        // FIXME: Currently hardcoded to BGRA as used in the renderer
+        let pixel_format = match self.encoding {
+            ImageEncoding::RGB8 => turbojpeg::PixelFormat::RGB,
+            ImageEncoding::RGBA8 => turbojpeg::PixelFormat::RGBA,
+            ImageEncoding::BGR8 => turbojpeg::PixelFormat::BGR,
+            ImageEncoding::BGRA8 => turbojpeg::PixelFormat::BGRA,
+            _ => turbojpeg::PixelFormat::BGRA, // fallback for non-RGB formats
+        };
         let raw_img = turbojpeg::Image {
             pixels: self.data.as_ref(),
             width: self.width as usize,
             pitch: self.step as usize,
             height: self.height as usize,
-            format: turbojpeg::PixelFormat::BGRA,
+            format: pixel_format,
         };
 
         let mut compressor = turbojpeg::Compressor::new().map_err(|e| {
