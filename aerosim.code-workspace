@@ -26,6 +26,12 @@
 		},
 		{
 			"path": "../aerosim-simulink"
+		},
+		{
+			"path": "../aerosim-isaac-sim"
+		},
+		{
+			"path": "../aerosim-isaac-sim/source/extensions/aerosim.omniverse.extension"
 		}
 	],
 	"settings": {}
