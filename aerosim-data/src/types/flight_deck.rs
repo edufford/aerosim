@@ -1,11 +1,18 @@
-use crate::{types::PyTypeSupport, AerosimMessage};
+use crate::AerosimMessage;
 
-use pyo3::prelude::*;
-use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::{Display, EnumString};
+
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{
+        prelude::*,
+        types::{PyCapsule, PyDict},
+    },
+};
 
 #[derive(
     Debug,
@@ -20,44 +27,21 @@ use strum_macros::{Display, EnumString};
     JsonSchema,
 )]
 #[repr(u8)]
-#[pyclass(eq, eq_int, get_all, set_all)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int, get_all, set_all))]
 pub enum HSIMode {
     GPS = 0,
     VOR1 = 1,
     VOR2 = 2,
 }
 
-#[pymethods]
 impl HSIMode {
-    pub fn __str__(&self) -> String {
-        self.to_string()
-    }
-
-    pub fn __repr__(&self) -> String {
-        format!("HSIMode::{}", self)
-    }
-
     pub fn to_int(&self) -> i32 {
         *self as i32
-    }
-
-    #[staticmethod]
-    pub fn to_dict(py: Python) -> PyResult<PyObject> {
-        let dict = pyo3::types::PyDict::new(py);
-        for variant in [HSIMode::GPS, HSIMode::VOR1, HSIMode::VOR2] {
-            dict.set_item(variant.to_string(), variant.to_int())?;
-        }
-        Ok(dict.into())
-    }
-
-    #[classattr]
-    fn __type_support__() -> Py<PyCapsule> {
-        PyTypeSupport::create::<Self>()
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 pub struct PrimaryFlightDisplayData {
     pub airspeed_kts: f64,                    // JSBSim "velocities/vc-kts"
     pub true_airspeed_kts: f64,               // JSBSim "velocities/vtrue-kts"
@@ -94,14 +78,56 @@ impl Default for PrimaryFlightDisplayData {
     }
 }
 
-#[pymethods]
 impl PrimaryFlightDisplayData {
-    #[new]
     pub fn new() -> Self {
         PrimaryFlightDisplayData::default()
     }
+}
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl HSIMode {
+    pub fn __str__(&self) -> String {
+        self.to_string()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("HSIMode::{}", self)
+    }
+
+    #[pyo3(name = "to_int")]
+    fn py_to_int(&self) -> i32 {
+        self.to_int()
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(py: Python) -> PyResult<PyObject> {
+        let dict = pyo3::types::PyDict::new(py);
+        for variant in [HSIMode::GPS, HSIMode::VOR1, HSIMode::VOR2] {
+            dict.set_item(variant.to_string(), variant.to_int())?;
+        }
+        Ok(dict.into())
+    }
+
+    #[classattr]
+    fn __type_support__() -> Py<PyCapsule> {
+        PyTypeSupport::create::<Self>()
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PrimaryFlightDisplayData {
+    #[new]
+    fn py_new() -> Self {
+        Self::new()
+    }
+
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("airspeed_kts", self.airspeed_kts)?;
         dict.set_item("true_airspeed_kts", self.true_airspeed_kts)?;

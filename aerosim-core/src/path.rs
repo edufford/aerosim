@@ -1,3 +1,4 @@
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 use std::env;
@@ -5,7 +6,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 
-pub fn read_config_file_internal(file_name: &str) -> io::Result<String> {
+pub fn read_config_file(file_name: &str) -> io::Result<String> {
     // Get the current working directory (usually the root of the project)
     let binding = env::current_dir().expect("Failed to get current directory");
     let current_dir = binding.to_str().unwrap();
@@ -33,9 +34,13 @@ pub fn read_config_file_internal(file_name: &str) -> io::Result<String> {
     Ok(content)
 }
 
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pyfunction]
-pub fn read_config_file(file_name: &str) -> PyResult<String> {
-    match read_config_file_internal(file_name) {
+#[pyo3(name = "read_config_file")]
+pub fn py_read_config_file(file_name: &str) -> PyResult<String> {
+    match read_config_file(file_name) {
         Ok(content) => Ok(content),
         Err(e) => Err(pyo3::exceptions::PyIOError::new_err(e.to_string())),
     }

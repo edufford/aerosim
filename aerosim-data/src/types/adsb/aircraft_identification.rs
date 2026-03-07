@@ -1,8 +1,10 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AircraftIdentification {
     /// Type Code
@@ -13,9 +15,13 @@ pub struct AircraftIdentification {
     pub cn: String,
 }
 
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl AircraftIdentification {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("tc", self.tc)?;
         let _ = dict.set_item("ca", self.ca)?;
@@ -24,6 +30,6 @@ impl AircraftIdentification {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }

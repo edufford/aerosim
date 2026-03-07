@@ -1,10 +1,12 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::types::{ADSBVersion, CapabilityClassAirborne, CapabilityClassSurface, OperationalMode};
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AircraftOperationStatusAirborne {
     pub capability_class: CapabilityClassAirborne,
@@ -19,9 +21,29 @@ pub struct AircraftOperationStatusAirborne {
     pub sil_supplement: u8,
 }
 
+#[cfg_attr(feature = "python", pyclass(get_all))]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AircraftOperationStatusSurface {
+    pub capability_class: CapabilityClassSurface,
+    pub lw_codes: u8,
+    pub operational_mode: OperationalMode,
+    pub gps_antenna_offset: u8,
+    pub version_number: ADSBVersion,
+    pub nic_supplement_a: u8,
+    pub navigational_accuracy_category: u8,
+    pub source_integrity_level: u8,
+    pub barometric_altitude_integrity: u8,
+    pub horizontal_reference_direction: u8,
+    pub sil_supplement: u8,
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl AircraftOperationStatusAirborne {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("capability_class", self.capability_class)?;
         let _ = dict.set_item("operational_mode", self.operational_mode)?;
@@ -49,29 +71,15 @@ impl AircraftOperationStatusAirborne {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }
 
-#[pyclass(get_all)]
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct AircraftOperationStatusSurface {
-    pub capability_class: CapabilityClassSurface,
-    pub lw_codes: u8,
-    pub operational_mode: OperationalMode,
-    pub gps_antenna_offset: u8,
-    pub version_number: ADSBVersion,
-    pub nic_supplement_a: u8,
-    pub navigational_accuracy_category: u8,
-    pub source_integrity_level: u8,
-    pub barometric_altitude_integrity: u8,
-    pub horizontal_reference_direction: u8,
-    pub sil_supplement: u8,
-}
-
+#[cfg(feature = "python")]
 #[pymethods]
 impl AircraftOperationStatusSurface {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("capability_class", self.capability_class)?;
         let _ = dict.set_item("lw_codes", self.lw_codes)?;
@@ -97,6 +105,6 @@ impl AircraftOperationStatusSurface {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }

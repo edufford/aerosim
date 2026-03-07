@@ -1,8 +1,10 @@
 use crate::{coordinate_system::conversion_utils::*, Ellipsoid};
-use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[pyclass]
+#[cfg(feature = "python")]
+use pyo3::prelude::*;
+
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct WorldCoordinate {
     // TODO Temporarily set variables as pub access for scene graph development. Change
@@ -19,10 +21,7 @@ pub struct WorldCoordinate {
 // TODO - Change cartesian axes to x=N y=E z=D at origin
 // TODO - Add methdos to convert cartesian-ECEF
 // TODO - Check accuracy of conversions and fix if necessary (especially NED-LLA)
-#[pymethods]
 impl WorldCoordinate {
-    #[new]
-    #[pyo3(signature = (origin_lat=0.0, origin_lon=0.0, origin_alt=0.0, ellipsoid=Ellipsoid::wgs84()))]
     pub fn new(origin_lat: f64, origin_lon: f64, origin_alt: f64, ellipsoid: Ellipsoid) -> Self {
         let ned = (0.0, 0.0, 0.0);
         WorldCoordinate {
@@ -41,7 +40,6 @@ impl WorldCoordinate {
         }
     }
 
-    #[staticmethod]
     pub fn from_ned(
         north: f64,
         east: f64,
@@ -57,7 +55,6 @@ impl WorldCoordinate {
         sim_coordinate
     }
 
-    #[staticmethod]
     pub fn from_lla(
         lat: f64,
         lon: f64,
@@ -73,7 +70,6 @@ impl WorldCoordinate {
         sim_coordinate
     }
 
-    #[staticmethod]
     pub fn from_ecef(
         x: f64,
         y: f64,
@@ -89,7 +85,6 @@ impl WorldCoordinate {
         sim_coordinate
     }
 
-    #[staticmethod]
     pub fn from_cartesian(
         x: f64,
         y: f64,
@@ -239,5 +234,113 @@ impl WorldCoordinate {
 
     pub fn cartesian(&self) -> (f64, f64, f64) {
         self.cartesian
+    }
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl WorldCoordinate {
+    #[new]
+    #[pyo3(signature = (origin_lat=0.0, origin_lon=0.0, origin_alt=0.0, ellipsoid=Ellipsoid::wgs84()))]
+    pub fn py_new(origin_lat: f64, origin_lon: f64, origin_alt: f64, ellipsoid: Ellipsoid) -> Self {
+        Self::new(origin_lat, origin_lon, origin_alt, ellipsoid)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_ned")]
+    pub fn py_from_ned(
+        north: f64,
+        east: f64,
+        down: f64,
+        origin_lat: f64,
+        origin_lon: f64,
+        origin_alt: f64,
+        ellipsoid: Ellipsoid,
+    ) -> Self {
+        Self::from_ned(north, east, down, origin_lat, origin_lon, origin_alt, ellipsoid)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_lla")]
+    pub fn py_from_lla(
+        lat: f64,
+        lon: f64,
+        alt: f64,
+        origin_lat: f64,
+        origin_lon: f64,
+        origin_alt: f64,
+        ellipsoid: Ellipsoid,
+    ) -> Self {
+        Self::from_lla(lat, lon, alt, origin_lat, origin_lon, origin_alt, ellipsoid)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_ecef")]
+    pub fn py_from_ecef(
+        x: f64,
+        y: f64,
+        z: f64,
+        origin_lat: f64,
+        origin_lon: f64,
+        origin_alt: f64,
+        ellipsoid: Ellipsoid,
+    ) -> Self {
+        Self::from_ecef(x, y, z, origin_lat, origin_lon, origin_alt, ellipsoid)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_cartesian")]
+    pub fn py_from_cartesian(
+        x: f64,
+        y: f64,
+        z: f64,
+        origin_lat: f64,
+        origin_lon: f64,
+        origin_alt: f64,
+        ellipsoid: Ellipsoid,
+    ) -> Self {
+        Self::from_cartesian(x, y, z, origin_lat, origin_lon, origin_alt, ellipsoid)
+    }
+
+    #[pyo3(name = "set_ned")]
+    pub fn py_set_ned(&mut self, north: f64, east: f64, down: f64) {
+        self.set_ned(north, east, down)
+    }
+
+    #[pyo3(name = "ned")]
+    pub fn py_ned(&self) -> (f64, f64, f64) {
+        self.ned()
+    }
+
+    #[pyo3(name = "set_lla")]
+    pub fn py_set_lla(&mut self, lat: f64, lon: f64, alt: f64) {
+        self.set_lla(lat, lon, alt)
+    }
+
+    #[pyo3(name = "lla")]
+    pub fn py_lla(&self) -> (f64, f64, f64) {
+        self.lla()
+    }
+
+    #[pyo3(name = "set_ecef")]
+    pub fn py_set_ecef(&mut self, x: f64, y: f64, z: f64) {
+        self.set_ecef(x, y, z)
+    }
+
+    #[pyo3(name = "ecef")]
+    pub fn py_ecef(&self) -> (f64, f64, f64) {
+        self.ecef()
+    }
+
+    #[pyo3(name = "set_cartesian")]
+    pub fn py_set_cartesian(&mut self, x: f64, y: f64, z: f64) {
+        self.set_cartesian(x, y, z)
+    }
+
+    #[pyo3(name = "cartesian")]
+    pub fn py_cartesian(&self) -> (f64, f64, f64) {
+        self.cartesian()
     }
 }

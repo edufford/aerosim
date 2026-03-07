@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-aerosim-core = { path = "../aerosim-core" }
-aerosim-data = { path = "../aerosim-data" }
+aerosim-core = { path = "../aerosim-core", default-features = false, features = [] }
+aerosim-data = { path = "../aerosim-data", default-features = false, features = ["kafka", "zenoh"] }
 futures = "0.3.31"
 lazy_static = "1.5.0"
 log = "0.4.25"

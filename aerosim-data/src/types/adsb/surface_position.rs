@@ -1,8 +1,10 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SurfacePosition {
     /// Aircraft ground speed
@@ -21,9 +23,13 @@ pub struct SurfacePosition {
     pub lon_cpr: u32,
 }
 
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl SurfacePosition {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("mov", self.mov)?;
         let _ = dict.set_item("s", self.s)?;
@@ -36,6 +42,6 @@ impl SurfacePosition {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }

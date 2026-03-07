@@ -1,16 +1,20 @@
+#[cfg(feature = "python")]
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::adsb::types::ICAOAddress;
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct LongAirAir {
     pub icao: ICAOAddress,
     pub altitude: u16,
 }
 
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl LongAirAir {
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
@@ -20,7 +24,8 @@ impl LongAirAir {
         Ok(dict.into())
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 }

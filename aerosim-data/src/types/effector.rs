@@ -1,28 +1,45 @@
 use crate::types::geometry::Pose;
-use crate::{types::PyTypeSupport, AerosimMessage};
+use crate::AerosimMessage;
 
-use pyo3::prelude::*;
-use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{
+        prelude::*,
+        types::{PyCapsule, PyDict},
+    },
+};
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 pub struct EffectorState {
     pub pose: Pose,
 }
 
+impl EffectorState {
+    pub fn new(pose: Pose) -> Self {
+        EffectorState { pose }
+    }
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl EffectorState {
     #[new]
     #[pyo3(signature = (pose=Pose::default()))]
-    pub fn new(pose: Pose) -> Self {
-        EffectorState { pose }
+    fn py_new(pose: Pose) -> Self {
+        Self::new(pose)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("pose", self.pose.to_dict(py)?)?;
+        dict.set_item("pose", self.pose.py_to_dict(py)?)?;
         Ok(dict.into())
     }
 

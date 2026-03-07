@@ -1,11 +1,16 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::AerosimMessage;
 
-use super::PyTypeSupport;
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{
+        prelude::*,
+        types::{PyCapsule, PyDict},
+    },
+};
 
 // ----------------------------------------------------------------------------
 // Aircraft Trajectory Visualization Command
@@ -14,19 +19,14 @@ use super::PyTypeSupport;
 #[derive(
     Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Default,
 )]
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 pub struct TrajectoryVisualization {
     pub settings: TrajectoryVisualizationSettings,
     pub user_defined_waypoints: TrajectoryWaypoints,
     pub future_trajectory: TrajectoryWaypoints,
 }
 
-#[pymethods]
 impl TrajectoryVisualization {
-    #[new]
-    #[pyo3(signature = (settings = TrajectoryVisualizationSettings::default(),
-    user_defined_waypoints = None,
-    future_trajectory = None))]
     pub fn new(
         settings: TrajectoryVisualizationSettings,
         user_defined_waypoints: Option<TrajectoryWaypoints>,
@@ -40,26 +40,10 @@ impl TrajectoryVisualization {
             future_trajectory,
         }
     }
-
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
-        dict.set_item("settings", self.settings.to_dict(py)?)?;
-        dict.set_item(
-            "user_defined_waypoints",
-            self.user_defined_waypoints.to_dict(py)?,
-        )?;
-        dict.set_item("future_trajectory", self.future_trajectory.to_dict(py)?)?;
-        Ok(dict.into())
-    }
-
-    #[classattr]
-    fn __type_support__() -> Py<PyCapsule> {
-        PyTypeSupport::create::<Self>()
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema)]
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 pub struct TrajectoryVisualizationSettings {
     pub display_future_trajectory: bool,
     pub display_past_trajectory: bool,
@@ -78,15 +62,7 @@ impl Default for TrajectoryVisualizationSettings {
     }
 }
 
-#[pymethods]
 impl TrajectoryVisualizationSettings {
-    #[new]
-    #[pyo3(signature = (
-        display_future_trajectory=TrajectoryVisualizationSettings::default().display_future_trajectory,
-        display_past_trajectory=TrajectoryVisualizationSettings::default().display_past_trajectory,
-        highlight_user_defined_waypoints=TrajectoryVisualizationSettings::default().highlight_user_defined_waypoints,
-        number_of_future_waypoints=TrajectoryVisualizationSettings::default().number_of_future_waypoints
-    ))]
     pub fn new(
         display_future_trajectory: bool,
         display_past_trajectory: bool,
@@ -100,8 +76,83 @@ impl TrajectoryVisualizationSettings {
             number_of_future_waypoints,
         }
     }
+}
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+#[derive(
+    Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Default,
+)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct TrajectoryWaypoints {
+    pub waypoints: String,
+}
+
+impl TrajectoryWaypoints {
+    pub fn new(waypoints: String) -> Self {
+        Self { waypoints }
+    }
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl TrajectoryVisualization {
+    #[new]
+    #[pyo3(signature = (settings = TrajectoryVisualizationSettings::default(),
+    user_defined_waypoints = None,
+    future_trajectory = None))]
+    fn py_new(
+        settings: TrajectoryVisualizationSettings,
+        user_defined_waypoints: Option<TrajectoryWaypoints>,
+        future_trajectory: Option<TrajectoryWaypoints>,
+    ) -> Self {
+        Self::new(settings, user_defined_waypoints, future_trajectory)
+    }
+
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
+        let dict = PyDict::new(py);
+        dict.set_item("settings", self.settings.py_to_dict(py)?)?;
+        dict.set_item(
+            "user_defined_waypoints",
+            self.user_defined_waypoints.py_to_dict(py)?,
+        )?;
+        dict.set_item("future_trajectory", self.future_trajectory.py_to_dict(py)?)?;
+        Ok(dict.into())
+    }
+
+    #[classattr]
+    fn __type_support__() -> Py<PyCapsule> {
+        PyTypeSupport::create::<Self>()
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl TrajectoryVisualizationSettings {
+    #[new]
+    #[pyo3(signature = (
+        display_future_trajectory=TrajectoryVisualizationSettings::default().display_future_trajectory,
+        display_past_trajectory=TrajectoryVisualizationSettings::default().display_past_trajectory,
+        highlight_user_defined_waypoints=TrajectoryVisualizationSettings::default().highlight_user_defined_waypoints,
+        number_of_future_waypoints=TrajectoryVisualizationSettings::default().number_of_future_waypoints
+    ))]
+    fn py_new(
+        display_future_trajectory: bool,
+        display_past_trajectory: bool,
+        highlight_user_defined_waypoints: bool,
+        number_of_future_waypoints: u64,
+    ) -> Self {
+        Self::new(
+            display_future_trajectory,
+            display_past_trajectory,
+            highlight_user_defined_waypoints,
+            number_of_future_waypoints,
+        )
+    }
+
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("display_future_trajectory", self.display_future_trajectory)?;
         dict.set_item("display_past_trajectory", self.display_past_trajectory)?;
@@ -122,23 +173,17 @@ impl TrajectoryVisualizationSettings {
     }
 }
 
-#[derive(
-    Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Default,
-)]
-#[pyclass(get_all, set_all)]
-pub struct TrajectoryWaypoints {
-    pub waypoints: String,
-}
-
+#[cfg(feature = "python")]
 #[pymethods]
 impl TrajectoryWaypoints {
     #[new]
     #[pyo3(signature = (waypoints="".to_string()))]
-    pub fn new(waypoints: String) -> Self {
-        Self { waypoints }
+    fn py_new(waypoints: String) -> Self {
+        Self::new(waypoints)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("waypoints", self.waypoints.clone())?;
         Ok(dict.into())

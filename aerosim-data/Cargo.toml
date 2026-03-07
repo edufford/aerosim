@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 aerosim-macros = { path = "../aerosim-macros" }
 chrono.workspace = true
 log.workspace = true
-pyo3.workspace = true
+pyo3 = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 strum.workspace = true
@@ -24,9 +24,9 @@ bincode = "1.3"
 ctor = "0.2.8"
 enum_dispatch = "0.3.13"
 futures = "0.3.31"
-pythonize = "0.23.0"
+pythonize = { version = "0.23.0", optional = true }
 schemars = "0.8.22"
-serde_bytes="0.11.16"
+serde_bytes = "0.11.16"
 serde_repr = "0.1.20"
 turbojpeg = { version = "1.3.0", default-features = false, features = ["cmake"] }
 
@@ -34,7 +34,8 @@ turbojpeg = { version = "1.3.0", default-features = false, features = ["cmake"] 
 cmake = "0.1.57"
 
 [features]
-default = ["kafka", "zenoh"]
+default = ["python", "kafka", "zenoh"]
+python = ["pyo3", "pythonize"]
 middleware = ["r2r", "dds", "kafka", "zenoh"]
 
 dds = ["cyclors", "cdr"]

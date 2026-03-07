@@ -1,11 +1,18 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{types::PyTypeSupport, AerosimMessage};
+use crate::AerosimMessage;
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{
+        prelude::*,
+        types::{PyCapsule, PyDict},
+    },
+};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(
     Clone,
     Copy,
@@ -32,29 +39,13 @@ impl Default for Vector3 {
     }
 }
 
-#[pymethods]
 impl Vector3 {
-    #[new]
-    #[pyo3(signature = (x=Vector3::default().x, y=Vector3::default().y, z=Vector3::default().z))]
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Vector3 { x, y, z }
     }
-
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
-        dict.set_item("x", self.x)?;
-        dict.set_item("y", self.y)?;
-        dict.set_item("z", self.z)?;
-        Ok(dict.into())
-    }
-
-    #[classattr]
-    fn __type_support__() -> Py<PyCapsule> {
-        PyTypeSupport::create::<Self>()
-    }
 }
 
-#[pyclass(get_all, set_all)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
 pub struct Quaternion {
     pub w: f64,
@@ -74,15 +65,65 @@ impl Default for Quaternion {
     }
 }
 
+impl Quaternion {
+    pub fn new(w: f64, x: f64, y: f64, z: f64) -> Self {
+        Quaternion { w, x, y, z }
+    }
+}
+
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
+pub struct Pose {
+    pub position: Vector3,
+    pub orientation: Quaternion,
+}
+
+impl Pose {
+    pub fn new(position: Vector3, orientation: Quaternion) -> Self {
+        Pose {
+            position,
+            orientation,
+        }
+    }
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Vector3 {
+    #[new]
+    #[pyo3(signature = (x=Vector3::default().x, y=Vector3::default().y, z=Vector3::default().z))]
+    fn py_new(x: f64, y: f64, z: f64) -> Self {
+        Self::new(x, y, z)
+    }
+
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
+        let dict = PyDict::new(py);
+        dict.set_item("x", self.x)?;
+        dict.set_item("y", self.y)?;
+        dict.set_item("z", self.z)?;
+        Ok(dict.into())
+    }
+
+    #[classattr]
+    fn __type_support__() -> Py<PyCapsule> {
+        PyTypeSupport::create::<Self>()
+    }
+}
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl Quaternion {
     #[new]
     #[pyo3(signature = (w=Quaternion::default().w, x=Quaternion::default().x, y=Quaternion::default().y, z=Quaternion::default().z))]
-    pub fn new(w: f64, x: f64, y: f64, z: f64) -> Self {
-        Quaternion { w, x, y, z }
+    fn py_new(w: f64, x: f64, y: f64, z: f64) -> Self {
+        Self::new(w, x, y, z)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("w", self.w)?;
         dict.set_item("x", self.x)?;
@@ -97,28 +138,19 @@ impl Quaternion {
     }
 }
 
-#[pyclass(get_all, set_all)]
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
-
-pub struct Pose {
-    pub position: Vector3,
-    pub orientation: Quaternion,
-}
-
+#[cfg(feature = "python")]
 #[pymethods]
 impl Pose {
     #[new]
-    pub fn new(position: Vector3, orientation: Quaternion) -> Self {
-        Pose {
-            position,
-            orientation,
-        }
+    fn py_new(position: Vector3, orientation: Quaternion) -> Self {
+        Self::new(position, orientation)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("position", self.position.to_dict(py)?)?;
-        dict.set_item("orientation", self.orientation.to_dict(py)?)?;
+        dict.set_item("position", self.position.py_to_dict(py)?)?;
+        dict.set_item("orientation", self.orientation.py_to_dict(py)?)?;
         Ok(dict.into())
     }
 
@@ -128,9 +160,7 @@ impl Pose {
     }
 }
 
-// Add tests for the geometry module
 #[cfg(test)]
-
 mod tests {
 
     #[test]

@@ -1,14 +1,16 @@
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use crate::types::PyTypeSupport;
 use crate::AerosimMessage;
 
-use pyo3::{exceptions::PyValueError, prelude::*, types::PyCapsule};
-use pythonize::{depythonize, pythonize};
-use serde::{Deserialize, Serialize};
-use serde_json;
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{exceptions::PyValueError, prelude::*, types::PyCapsule},
+    pythonize::{depythonize, pythonize},
+};
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(
     Clone, Debug, Serialize, Deserialize, PartialEq, aerosim_macros::AerosimMessage, JsonSchema,
 )]
@@ -28,10 +30,13 @@ impl JsonData {
     }
 }
 
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl JsonData {
     #[new]
-    pub fn pynew(py: Python, data: PyObject) -> PyResult<Self> {
+    pub fn py_new(py: Python, data: PyObject) -> PyResult<Self> {
         let json: serde_json::Value = depythonize(&data.into_bound(py)).map_err(|e| {
             PyValueError::new_err(format!("Failed to deserialize from Python object: {}", e))
         })?;
@@ -41,7 +46,7 @@ impl JsonData {
     }
 
     #[pyo3(name = "get_data")]
-    pub fn pyget_data(&self, py: Python) -> PyResult<PyObject> {
+    pub fn py_get_data(&self, py: Python) -> PyResult<PyObject> {
         let json = self
             .get_data()
             .ok_or_else(|| PyValueError::new_err(format!("Failed to deserialize JSON data")))?;
@@ -51,8 +56,9 @@ impl JsonData {
         Ok(obj.into())
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
-        self.pyget_data(py)
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
+        self.py_get_data(py)
     }
 
     #[classattr]
