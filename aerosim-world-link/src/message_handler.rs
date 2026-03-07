@@ -9,12 +9,14 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::mpsc::error::TryRecvError;
 
+const SUBSCRIBE_CHANNEL_BUFFER_SIZE: usize = 16;
+
 use aerosim_data::{
     middleware::{
         BincodeSerializer, Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, MiddlewareRegistry,
-        Serializer,
+        Serializer, SerializerEnum,
     },
-    types::{CompressedImage, Image, JsonData},
+    types::{CompressedImage, Image, JsonData, TypeRegistry},
     AerosimMessage,
 };
 
@@ -117,6 +119,10 @@ pub struct MessageHandler {
     // Channel for sending images through an asynchronous processing pipeline
     tx_img: Arc<tokio::sync::mpsc::Sender<(String, Image)>>,
     rx_img: Option<tokio::sync::mpsc::Receiver<(String, Image)>>,
+
+    // Channel for requesting new topic subscriptions from the async runtime
+    tx_sub: Arc<tokio::sync::mpsc::Sender<String>>,
+    rx_sub: Option<tokio::sync::mpsc::Receiver<String>>,
 }
 
 impl MessageHandler {
@@ -125,6 +131,7 @@ impl MessageHandler {
 
         let (tx_stop, rx_stop) = tokio::sync::mpsc::channel::<bool>(1);
         let (tx_img, rx_img) = tokio::sync::mpsc::channel::<(String, Image)>(1);
+        let (tx_sub, rx_sub) = tokio::sync::mpsc::channel::<String>(SUBSCRIBE_CHANNEL_BUFFER_SIZE);
 
         let transport = match middleware_type {
             "kafka" => MiddlewareRegistry::new()
@@ -153,6 +160,8 @@ impl MessageHandler {
             rx_stop: Some(rx_stop),
             tx_img: Arc::new(tx_img),
             rx_img: Some(rx_img),
+            tx_sub: Arc::new(tx_sub),
+            rx_sub: Some(rx_sub),
         }
     }
 
@@ -166,6 +175,7 @@ impl MessageHandler {
         let instance_id = self.renderer_id.clone();
         let rx_img = self.rx_img.take().unwrap();
         let rx_stop = self.rx_stop.take().unwrap();
+        let rx_sub = self.rx_sub.take().unwrap();
         self.thread_handle = Some(thread::spawn(move || {
             runtime.block_on(message_handler_main(
                 transport,
@@ -174,6 +184,7 @@ impl MessageHandler {
                 instance_id,
                 rx_img,
                 rx_stop,
+                rx_sub,
             ));
         }));
 
@@ -226,6 +237,14 @@ impl MessageHandler {
         let _ = self.tx_img.try_send((topic.to_string(), image));
     }
 
+    pub fn subscribe_to_topic(&self, topic: &str) {
+        info!(
+            "[aerosim.renderer.message_handler] Requesting subscription to topic: {}",
+            topic
+        );
+        let _ = self.tx_sub.try_send(topic.to_string());
+    }
+
     pub fn get_payload_queue_size(&self) -> u32 {
         let q_size = self.payload_queue.lock().unwrap().queue.len();
         q_size as u32
@@ -273,6 +292,7 @@ async fn message_handler_main(
     renderer_id: String,
     mut rx_img: tokio::sync::mpsc::Receiver<(String, Image)>,
     mut rx_stop: tokio::sync::mpsc::Receiver<bool>,
+    mut rx_sub: tokio::sync::mpsc::Receiver<String>,
 ) {
     {
         match transport
@@ -331,12 +351,42 @@ async fn message_handler_main(
         }
     }
 
-    // Process image publishing asynchronously in this loop.
-    // This helps avoid blocking the renderer while the middleware is publishing the image.
-    // The channel buffer between the renderer thread and this thread is set to 1.
+    // Process image publishing, subscription requests, and stop signals asynchronously.
+    // The image channel buffer between the renderer thread and this thread is set to 1.
     // If the buffer already contains an image and the renderer tries to add a new one,
     // the new image will be discarded (i.e., image loss is possible).
     loop {
+        // Process any pending subscription requests
+        while let Ok(topic) = rx_sub.try_recv() {
+            info!(
+                "[aerosim.world.link] Creating subscription for topic: {}",
+                topic
+            );
+            let serializer = transport.get_serializer();
+            let subscribe_result = transport
+                // message_type parameter ("") is unused by both Kafka and Zenoh subscribe_raw implementations;
+                // the actual type is resolved from metadata inside the raw payload callback.
+                .subscribe_raw("", &topic, {
+                    let payload_queue = Arc::clone(&payload_queue);
+                    let topic = topic.clone();
+                    Box::new(move |raw_payload: &[u8]| {
+                        handle_raw_topic_message(raw_payload, &serializer, &topic, &payload_queue);
+                        Ok(())
+                    })
+                })
+                .await;
+            match subscribe_result {
+                Ok(()) => info!(
+                    "[aerosim.world.link] Created subscriber for topic: {}",
+                    topic
+                ),
+                Err(e) => warn!(
+                    "[aerosim.world.link] Could not create subscriber for topic {}: {:?}",
+                    topic, e
+                ),
+            }
+        }
+
         match rx_img.try_recv() {
             Ok((topic, image)) => {
                 // TODO: Properly pass `timestamp_sim` and `timestamp_platform` from the renderer.
@@ -568,6 +618,68 @@ fn filter_scene_graph_data(
     // TODO: Filter out entities based on assigned sensors.
 
     filtered_scene_graph
+}
+
+fn handle_raw_topic_message(
+    raw_payload: &[u8],
+    serializer: &SerializerEnum,
+    topic: &str,
+    payload_queue: &Arc<Mutex<PayloadQueue>>,
+) {
+    // Deserialize metadata first to get the message type and timestamps
+    let Some(metadata) = serializer.deserialize_metadata(raw_payload) else {
+        warn!(
+            "[aerosim.world.link] Failed to deserialize metadata on topic: {}",
+            topic
+        );
+        return;
+    };
+
+    // Use the TypeRegistry to deserialize the data to JSON based on the message type
+    let msg_data: serde_json::Value =
+        if let Some(typesupport) = TypeRegistry::new().get(&metadata.type_name) {
+            match typesupport.to_json(serializer, raw_payload) {
+                Some(json_val) => json_val,
+                None => {
+                    warn!(
+                    "[aerosim.world.link] Failed to deserialize data for type '{}' on topic: {}",
+                    metadata.type_name, topic
+                );
+                    return;
+                }
+            }
+        } else {
+            warn!(
+                "[aerosim.world.link] Unknown message type '{}' on topic: {}",
+                metadata.type_name, topic
+            );
+            return;
+        };
+
+    let payload_timestamp: f64 = metadata.timestamp_platform.sec as f64
+        + metadata.timestamp_platform.nanosec as f64 / 1_000_000_000.0;
+
+    let timestamp_sim_f64: f64 =
+        metadata.timestamp_sim.sec as f64 + metadata.timestamp_sim.nanosec as f64 / 1_000_000_000.0;
+
+    // Wrap the data with topic and type metadata so the consumer can distinguish messages
+    let envelope = json!({
+        "topic": topic,
+        "message_type": metadata.type_name,
+        "timestamp_sim": {
+            "sec": metadata.timestamp_sim.sec,
+            "nanosec": metadata.timestamp_sim.nanosec,
+        },
+        "timestamp_sim_f64": timestamp_sim_f64,
+        "data": msg_data,
+    });
+
+    let mut payload_queue_lock = payload_queue.lock().unwrap();
+    payload_queue_lock.push(Payload {
+        timestamp: payload_timestamp,
+        raw_payload: serde_json::to_string(&envelope)
+            .expect("Error serializing raw topic message to JSON."),
+    });
 }
 
 fn handle_scene_graph_update_message(

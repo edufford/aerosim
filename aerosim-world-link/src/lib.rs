@@ -237,6 +237,31 @@ pub extern "C" fn publish_image_to_topic(
 }
 
 #[no_mangle]
+pub extern "C" fn subscribe_to_topic(topic: *const c_char) -> bool {
+    let c_str_topic = unsafe { CStr::from_ptr(topic) };
+    match c_str_topic.to_str() {
+        Ok(topic_str) => {
+            info!(
+                "[aerosim.renderer] Subscribing to topic: {}",
+                topic_str
+            );
+            let handler = GLOBAL_HANDLER.lock().unwrap();
+            if let Some(ref handler) = *handler {
+                handler.subscribe_to_topic(topic_str);
+                true
+            } else {
+                error!("[aerosim.renderer] Message handler has not been initialized.");
+                false
+            }
+        }
+        Err(_) => {
+            error!("[aerosim.renderer] Failed to subscribe: invalid UTF-8 topic string.");
+            false
+        }
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn get_consumer_payload_queue_size() -> u32 {
     // info!("[aerosim.renderer] Getting consumer payload queue's size.");
     let handler = GLOBAL_HANDLER.lock().unwrap();
