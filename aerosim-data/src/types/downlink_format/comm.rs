@@ -34,6 +34,8 @@ pub struct CommDExtendedLengthMessage {
     pub icao: ICAOAddress,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl CommBAltitudeReply {

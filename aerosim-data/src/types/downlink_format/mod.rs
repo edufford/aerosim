@@ -30,6 +30,8 @@ pub enum DownlinkFormat {
     CommDExtendedLength(comm::CommDExtendedLengthMessage),
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl DownlinkFormat {

@@ -15,6 +15,8 @@ pub struct AircraftIdentification {
     pub cn: String,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl AircraftIdentification {

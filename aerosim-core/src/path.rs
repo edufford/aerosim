@@ -34,6 +34,8 @@ pub fn read_config_file(file_name: &str) -> io::Result<String> {
     Ok(content)
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pyfunction]
 #[pyo3(name = "read_config_file")]

@@ -441,6 +441,8 @@ impl Middleware for DDSMiddleware {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 impl PyMiddleware for DDSMiddleware {}
 

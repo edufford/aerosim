@@ -44,9 +44,6 @@ impl MiddlewareRaw for NoMiddleware {
     }
 }
 
-#[cfg(feature = "python")]
-impl PyMiddleware for NoMiddleware {}
-
 #[async_trait]
 impl Middleware for NoMiddleware {
     fn get_serializer(&self) -> SerializerEnum {
@@ -70,3 +67,8 @@ impl Serializer for NoSerializer {
         None
     }
 }
+
+// Python interface layer
+
+#[cfg(feature = "python")]
+impl PyMiddleware for NoMiddleware {}

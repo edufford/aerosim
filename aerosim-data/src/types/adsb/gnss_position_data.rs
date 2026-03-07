@@ -38,6 +38,8 @@ impl GNSSPositionData {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl GNSSPositionData {

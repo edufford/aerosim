@@ -44,43 +44,6 @@ impl AutopilotFlightPlanCommand {
     }
 }
 
-#[cfg(feature = "python")]
-#[pymethods]
-impl AutopilotFlightPlanCommand {
-    #[staticmethod]
-    pub fn from_str(s: &str) -> PyResult<Self> {
-        s.parse().map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid AutopilotFlightPlanCommand")
-        })
-    }
-
-    pub fn __str__(&self) -> String {
-        self.to_string()
-    }
-
-    pub fn __repr__(&self) -> String {
-        format!("AutopilotFlightPlanCommand::{}", self)
-    }
-
-    #[staticmethod]
-    pub fn to_dict(py: Python) -> PyResult<PyObject> {
-        let dict = pyo3::types::PyDict::new(py);
-        for variant in [
-            AutopilotFlightPlanCommand::Stop,
-            AutopilotFlightPlanCommand::Run,
-            AutopilotFlightPlanCommand::Pause,
-        ] {
-            dict.set_item(variant.to_string(), variant.to_int())?;
-        }
-        Ok(dict.into())
-    }
-
-    #[classattr]
-    fn __type_support__() -> Py<PyCapsule> {
-        PyTypeSupport::create::<Self>()
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
 #[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 pub struct AutopilotCommand {
@@ -154,6 +117,173 @@ impl AutopilotCommand {
             target_wp_latitude_deg,
             target_wp_longitude_deg,
         }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Flight Control Command
+// Output from (auto)pilot, input to flight controller
+
+#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct FlightControlCommand {
+    power_cmd: Vec<f64>, // power, 0.0~1.0, array to be able to split vertical lift and horizontal cruise
+    roll_cmd: f64,       // roll axis, -1.0~1.0
+    pitch_cmd: f64,      // pitch axis, -1.0~1.0
+    yaw_cmd: f64,        // yaw axis, -1.0~1.0
+    thrust_tilt_cmd: f64, // tilt vtol, 0.0~1.0
+    flap_cmd: f64,       // flap, 0.0~1.0, for low speed flight
+    speedbrake_cmd: f64, // speedbrake, 0.0~1.0, for fixed-wing
+    landing_gear_cmd: f64, // landing gear, 0.0 up ~ 1.0 down
+    wheel_steer_cmd: f64, // wheel steering, -1.0~1.0
+    wheel_brake_cmd: f64, // wheel brake, 0.0~1.0
+}
+
+impl Default for FlightControlCommand {
+    fn default() -> FlightControlCommand {
+        FlightControlCommand {
+            power_cmd: vec![0.0],
+            roll_cmd: 0.0,
+            pitch_cmd: 0.0,
+            yaw_cmd: 0.0,
+            thrust_tilt_cmd: 0.0,
+            flap_cmd: 0.0,
+            speedbrake_cmd: 0.0,
+            landing_gear_cmd: 0.0,
+            wheel_steer_cmd: 0.0,
+            wheel_brake_cmd: 0.0,
+        }
+    }
+}
+
+impl FlightControlCommand {
+    pub fn new(
+        power_cmd: Vec<f64>,
+        roll_cmd: f64,
+        pitch_cmd: f64,
+        yaw_cmd: f64,
+        thrust_tilt_cmd: f64,
+        flap_cmd: f64,
+        speedbrake_cmd: f64,
+        landing_gear_cmd: f64,
+        wheel_steer_cmd: f64,
+        wheel_brake_cmd: f64,
+    ) -> Self {
+        FlightControlCommand {
+            power_cmd,
+            roll_cmd,
+            pitch_cmd,
+            yaw_cmd,
+            thrust_tilt_cmd,
+            flap_cmd,
+            speedbrake_cmd,
+            landing_gear_cmd,
+            wheel_steer_cmd,
+            wheel_brake_cmd,
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Aircraft Effector Command
+// Output from flight controller, input to flight dynamics model
+
+#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct AircraftEffectorCommand {
+    throttle_cmd: Vec<f64>,
+    aileron_cmd_angle_rad: Vec<f64>,
+    elevator_cmd_angle_rad: Vec<f64>,
+    rudder_cmd_angle_rad: Vec<f64>,
+    thrust_tilt_cmd_angle_rad: Vec<f64>,
+    flap_cmd_angle_rad: Vec<f64>,
+    speedbrake_cmd_angle_rad: Vec<f64>,
+    landing_gear_cmd: Vec<f64>,
+    wheel_steer_cmd_angle_rad: Vec<f64>,
+    wheel_brake_cmd: Vec<f64>,
+}
+
+impl Default for AircraftEffectorCommand {
+    fn default() -> AircraftEffectorCommand {
+        AircraftEffectorCommand {
+            throttle_cmd: vec![],
+            aileron_cmd_angle_rad: vec![],
+            elevator_cmd_angle_rad: vec![],
+            rudder_cmd_angle_rad: vec![],
+            thrust_tilt_cmd_angle_rad: vec![],
+            flap_cmd_angle_rad: vec![],
+            speedbrake_cmd_angle_rad: vec![],
+            landing_gear_cmd: vec![],
+            wheel_steer_cmd_angle_rad: vec![],
+            wheel_brake_cmd: vec![],
+        }
+    }
+}
+
+impl AircraftEffectorCommand {
+    pub fn new(
+        throttle_cmd: Vec<f64>,
+        aileron_cmd_angle_rad: Vec<f64>,
+        elevator_cmd_angle_rad: Vec<f64>,
+        rudder_cmd_angle_rad: Vec<f64>,
+        thrust_tilt_cmd_angle_rad: Vec<f64>,
+        flap_cmd_angle_rad: Vec<f64>,
+        speedbrake_cmd_angle_rad: Vec<f64>,
+        landing_gear_cmd: Vec<f64>,
+        wheel_steer_cmd_angle_rad: Vec<f64>,
+        wheel_brake_cmd: Vec<f64>,
+    ) -> Self {
+        AircraftEffectorCommand {
+            throttle_cmd,
+            aileron_cmd_angle_rad,
+            elevator_cmd_angle_rad,
+            rudder_cmd_angle_rad,
+            thrust_tilt_cmd_angle_rad,
+            flap_cmd_angle_rad,
+            speedbrake_cmd_angle_rad,
+            landing_gear_cmd,
+            wheel_steer_cmd_angle_rad,
+            wheel_brake_cmd,
+        }
+    }
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl AutopilotFlightPlanCommand {
+    #[staticmethod]
+    pub fn from_str(s: &str) -> PyResult<Self> {
+        s.parse().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid AutopilotFlightPlanCommand")
+        })
+    }
+
+    pub fn __str__(&self) -> String {
+        self.to_string()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("AutopilotFlightPlanCommand::{}", self)
+    }
+
+    #[staticmethod]
+    pub fn to_dict(py: Python) -> PyResult<PyObject> {
+        let dict = pyo3::types::PyDict::new(py);
+        for variant in [
+            AutopilotFlightPlanCommand::Stop,
+            AutopilotFlightPlanCommand::Run,
+            AutopilotFlightPlanCommand::Pause,
+        ] {
+            dict.set_item(variant.to_string(), variant.to_int())?;
+        }
+        Ok(dict.into())
+    }
+
+    #[classattr]
+    fn __type_support__() -> Py<PyCapsule> {
+        PyTypeSupport::create::<Self>()
     }
 }
 
@@ -232,70 +362,6 @@ impl AutopilotCommand {
     }
 }
 
-// ----------------------------------------------------------------------------
-// Flight Control Command
-// Output from (auto)pilot, input to flight controller
-
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-pub struct FlightControlCommand {
-    power_cmd: Vec<f64>, // power, 0.0~1.0, array to be able to split vertical lift and horizontal cruise
-    roll_cmd: f64,       // roll axis, -1.0~1.0
-    pitch_cmd: f64,      // pitch axis, -1.0~1.0
-    yaw_cmd: f64,        // yaw axis, -1.0~1.0
-    thrust_tilt_cmd: f64, // tilt vtol, 0.0~1.0
-    flap_cmd: f64,       // flap, 0.0~1.0, for low speed flight
-    speedbrake_cmd: f64, // speedbrake, 0.0~1.0, for fixed-wing
-    landing_gear_cmd: f64, // landing gear, 0.0 up ~ 1.0 down
-    wheel_steer_cmd: f64, // wheel steering, -1.0~1.0
-    wheel_brake_cmd: f64, // wheel brake, 0.0~1.0
-}
-
-impl Default for FlightControlCommand {
-    fn default() -> FlightControlCommand {
-        FlightControlCommand {
-            power_cmd: vec![0.0],
-            roll_cmd: 0.0,
-            pitch_cmd: 0.0,
-            yaw_cmd: 0.0,
-            thrust_tilt_cmd: 0.0,
-            flap_cmd: 0.0,
-            speedbrake_cmd: 0.0,
-            landing_gear_cmd: 0.0,
-            wheel_steer_cmd: 0.0,
-            wheel_brake_cmd: 0.0,
-        }
-    }
-}
-
-impl FlightControlCommand {
-    pub fn new(
-        power_cmd: Vec<f64>,
-        roll_cmd: f64,
-        pitch_cmd: f64,
-        yaw_cmd: f64,
-        thrust_tilt_cmd: f64,
-        flap_cmd: f64,
-        speedbrake_cmd: f64,
-        landing_gear_cmd: f64,
-        wheel_steer_cmd: f64,
-        wheel_brake_cmd: f64,
-    ) -> Self {
-        FlightControlCommand {
-            power_cmd,
-            roll_cmd,
-            pitch_cmd,
-            yaw_cmd,
-            thrust_tilt_cmd,
-            flap_cmd,
-            speedbrake_cmd,
-            landing_gear_cmd,
-            wheel_steer_cmd,
-            wheel_brake_cmd,
-        }
-    }
-}
-
 #[cfg(feature = "python")]
 #[pymethods]
 impl FlightControlCommand {
@@ -355,70 +421,6 @@ impl FlightControlCommand {
     #[classattr]
     fn __type_support__() -> Py<PyCapsule> {
         PyTypeSupport::create::<Self>()
-    }
-}
-
-// ----------------------------------------------------------------------------
-// Aircraft Effector Command
-// Output from flight controller, input to flight dynamics model
-
-#[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-pub struct AircraftEffectorCommand {
-    throttle_cmd: Vec<f64>,
-    aileron_cmd_angle_rad: Vec<f64>,
-    elevator_cmd_angle_rad: Vec<f64>,
-    rudder_cmd_angle_rad: Vec<f64>,
-    thrust_tilt_cmd_angle_rad: Vec<f64>,
-    flap_cmd_angle_rad: Vec<f64>,
-    speedbrake_cmd_angle_rad: Vec<f64>,
-    landing_gear_cmd: Vec<f64>,
-    wheel_steer_cmd_angle_rad: Vec<f64>,
-    wheel_brake_cmd: Vec<f64>,
-}
-
-impl Default for AircraftEffectorCommand {
-    fn default() -> AircraftEffectorCommand {
-        AircraftEffectorCommand {
-            throttle_cmd: vec![],
-            aileron_cmd_angle_rad: vec![],
-            elevator_cmd_angle_rad: vec![],
-            rudder_cmd_angle_rad: vec![],
-            thrust_tilt_cmd_angle_rad: vec![],
-            flap_cmd_angle_rad: vec![],
-            speedbrake_cmd_angle_rad: vec![],
-            landing_gear_cmd: vec![],
-            wheel_steer_cmd_angle_rad: vec![],
-            wheel_brake_cmd: vec![],
-        }
-    }
-}
-
-impl AircraftEffectorCommand {
-    pub fn new(
-        throttle_cmd: Vec<f64>,
-        aileron_cmd_angle_rad: Vec<f64>,
-        elevator_cmd_angle_rad: Vec<f64>,
-        rudder_cmd_angle_rad: Vec<f64>,
-        thrust_tilt_cmd_angle_rad: Vec<f64>,
-        flap_cmd_angle_rad: Vec<f64>,
-        speedbrake_cmd_angle_rad: Vec<f64>,
-        landing_gear_cmd: Vec<f64>,
-        wheel_steer_cmd_angle_rad: Vec<f64>,
-        wheel_brake_cmd: Vec<f64>,
-    ) -> Self {
-        AircraftEffectorCommand {
-            throttle_cmd,
-            aileron_cmd_angle_rad,
-            elevator_cmd_angle_rad,
-            rudder_cmd_angle_rad,
-            thrust_tilt_cmd_angle_rad,
-            flap_cmd_angle_rad,
-            speedbrake_cmd_angle_rad,
-            landing_gear_cmd,
-            wheel_steer_cmd_angle_rad,
-            wheel_brake_cmd,
-        }
     }
 }
 

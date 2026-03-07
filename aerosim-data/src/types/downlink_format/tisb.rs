@@ -13,6 +13,8 @@ pub struct TisB {
     pub me: ME,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl TisB {

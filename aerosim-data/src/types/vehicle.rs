@@ -24,6 +24,36 @@ pub enum VehicleType {
     Marine,
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
+pub struct VehicleState {
+    pub state: ActorState,
+    pub velocity: Vector3,
+    pub angular_velocity: Vector3,
+    pub acceleration: Vector3,
+    pub angular_acceleration: Vector3,
+}
+
+impl VehicleState {
+    pub fn new(
+        state: ActorState,
+        velocity: Vector3,
+        angular_velocity: Vector3,
+        acceleration: Vector3,
+        angular_acceleration: Vector3,
+    ) -> Self {
+        VehicleState {
+            state,
+            velocity,
+            angular_velocity,
+            acceleration,
+            angular_acceleration,
+        }
+    }
+}
+
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl VehicleType {
@@ -52,34 +82,6 @@ impl VehicleType {
             dict.set_item(variant.to_string(), variant.__repr__())?;
         }
         Ok(dict.into())
-    }
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[cfg_attr(feature = "python", pyclass(get_all))]
-pub struct VehicleState {
-    pub state: ActorState,
-    pub velocity: Vector3,
-    pub angular_velocity: Vector3,
-    pub acceleration: Vector3,
-    pub angular_acceleration: Vector3,
-}
-
-impl VehicleState {
-    pub fn new(
-        state: ActorState,
-        velocity: Vector3,
-        angular_velocity: Vector3,
-        acceleration: Vector3,
-        angular_acceleration: Vector3,
-    ) -> Self {
-        VehicleState {
-            state,
-            velocity,
-            angular_velocity,
-            acceleration,
-            angular_acceleration,
-        }
     }
 }
 

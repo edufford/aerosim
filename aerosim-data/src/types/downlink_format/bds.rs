@@ -31,6 +31,8 @@ pub struct DataLinkCapability {
     pub bit_array: u16,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl BDS {

@@ -28,6 +28,8 @@ pub struct SurveillanceIdentityReply {
     pub flight_status: FlightStatus,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl ShortAirAirSurveillance {

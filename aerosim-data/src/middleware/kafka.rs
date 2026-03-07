@@ -297,6 +297,8 @@ impl Middleware for KafkaMiddleware {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 impl PyMiddleware for KafkaMiddleware {}
 

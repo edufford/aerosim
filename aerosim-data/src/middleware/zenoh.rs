@@ -180,6 +180,8 @@ impl Middleware for ZenohMiddleware {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 impl PyMiddleware for ZenohMiddleware {}
 

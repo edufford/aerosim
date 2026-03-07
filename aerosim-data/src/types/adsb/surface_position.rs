@@ -23,6 +23,8 @@ pub struct SurfacePosition {
     pub lon_cpr: u32,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl SurfacePosition {

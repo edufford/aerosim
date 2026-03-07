@@ -846,6 +846,8 @@ pub fn generate_trajectory_from_adsb_csv(
     Ok(())
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pyfunction]
 #[pyo3(name = "generate_trajectory", signature = (

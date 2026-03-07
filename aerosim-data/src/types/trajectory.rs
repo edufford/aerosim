@@ -42,38 +42,6 @@ impl TrajectoryVisualization {
     }
 }
 
-#[cfg(feature = "python")]
-#[pymethods]
-impl TrajectoryVisualization {
-    #[new]
-    #[pyo3(signature = (settings = TrajectoryVisualizationSettings::default(),
-    user_defined_waypoints = None,
-    future_trajectory = None))]
-    fn py_new(
-        settings: TrajectoryVisualizationSettings,
-        user_defined_waypoints: Option<TrajectoryWaypoints>,
-        future_trajectory: Option<TrajectoryWaypoints>,
-    ) -> Self {
-        Self::new(settings, user_defined_waypoints, future_trajectory)
-    }
-
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
-        dict.set_item("settings", self.settings.to_dict(py)?)?;
-        dict.set_item(
-            "user_defined_waypoints",
-            self.user_defined_waypoints.to_dict(py)?,
-        )?;
-        dict.set_item("future_trajectory", self.future_trajectory.to_dict(py)?)?;
-        Ok(dict.into())
-    }
-
-    #[classattr]
-    fn __type_support__() -> Py<PyCapsule> {
-        PyTypeSupport::create::<Self>()
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema)]
 #[cfg_attr(feature = "python", pyclass(get_all))]
 pub struct TrajectoryVisualizationSettings {
@@ -107,6 +75,54 @@ impl TrajectoryVisualizationSettings {
             highlight_user_defined_waypoints,
             number_of_future_waypoints,
         }
+    }
+}
+
+#[derive(
+    Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Default,
+)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct TrajectoryWaypoints {
+    pub waypoints: String,
+}
+
+impl TrajectoryWaypoints {
+    pub fn new(waypoints: String) -> Self {
+        Self { waypoints }
+    }
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl TrajectoryVisualization {
+    #[new]
+    #[pyo3(signature = (settings = TrajectoryVisualizationSettings::default(),
+    user_defined_waypoints = None,
+    future_trajectory = None))]
+    fn py_new(
+        settings: TrajectoryVisualizationSettings,
+        user_defined_waypoints: Option<TrajectoryWaypoints>,
+        future_trajectory: Option<TrajectoryWaypoints>,
+    ) -> Self {
+        Self::new(settings, user_defined_waypoints, future_trajectory)
+    }
+
+    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+        let dict = PyDict::new(py);
+        dict.set_item("settings", self.settings.to_dict(py)?)?;
+        dict.set_item(
+            "user_defined_waypoints",
+            self.user_defined_waypoints.to_dict(py)?,
+        )?;
+        dict.set_item("future_trajectory", self.future_trajectory.to_dict(py)?)?;
+        Ok(dict.into())
+    }
+
+    #[classattr]
+    fn __type_support__() -> Py<PyCapsule> {
+        PyTypeSupport::create::<Self>()
     }
 }
 
@@ -152,20 +168,6 @@ impl TrajectoryVisualizationSettings {
     #[classattr]
     fn __type_support__() -> Py<PyCapsule> {
         PyTypeSupport::create::<Self>()
-    }
-}
-
-#[derive(
-    Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Default,
-)]
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-pub struct TrajectoryWaypoints {
-    pub waypoints: String,
-}
-
-impl TrajectoryWaypoints {
-    pub fn new(waypoints: String) -> Self {
-        Self { waypoints }
     }
 }
 

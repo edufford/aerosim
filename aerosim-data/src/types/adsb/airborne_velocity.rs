@@ -29,6 +29,8 @@ pub struct AirborneVelocity {
     pub vertical_rate: Option<i16>,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl AirborneVelocity {

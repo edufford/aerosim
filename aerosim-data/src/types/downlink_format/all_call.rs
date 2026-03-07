@@ -12,6 +12,8 @@ pub struct AllCallReply {
     pub capability: Capability,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl AllCallReply {

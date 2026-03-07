@@ -27,35 +27,6 @@ impl Rotator {
     }
 }
 
-#[cfg(feature = "python")]
-#[pymethods]
-impl Rotator {
-    #[new]
-    #[pyo3(signature = (roll = 0.0, pitch = 0.0, yaw = 0.0))]
-    pub fn py_new(roll: f64, pitch: f64, yaw: f64) -> Self {
-        Self::new(roll, pitch, yaw)
-    }
-
-    #[getter]
-    fn roll(&self) -> f64 { self.roll }
-    #[setter]
-    fn set_roll(&mut self, val: f64) { self.roll = val; }
-
-    #[getter]
-    fn pitch(&self) -> f64 { self.pitch }
-    #[setter]
-    fn set_pitch(&mut self, val: f64) { self.pitch = val; }
-
-    #[getter]
-    fn yaw(&self) -> f64 { self.yaw }
-    #[setter]
-    fn set_yaw(&mut self, val: f64) { self.yaw = val; }
-
-    pub const fn to_python_tuple(&self) -> (f64, f64, f64) {
-        self.to_tuple()
-    }
-}
-
 impl ops::Add<Rotator> for Rotator {
     type Output = Rotator;
 
@@ -120,6 +91,36 @@ impl ops::Mul<Rotator> for f64 {
     }
 }
 
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Rotator {
+    #[new]
+    #[pyo3(signature = (roll = 0.0, pitch = 0.0, yaw = 0.0))]
+    pub fn py_new(roll: f64, pitch: f64, yaw: f64) -> Self {
+        Self::new(roll, pitch, yaw)
+    }
+
+    #[getter]
+    fn roll(&self) -> f64 { self.roll }
+    #[setter]
+    fn set_roll(&mut self, val: f64) { self.roll = val; }
+
+    #[getter]
+    fn pitch(&self) -> f64 { self.pitch }
+    #[setter]
+    fn set_pitch(&mut self, val: f64) { self.pitch = val; }
+
+    #[getter]
+    fn yaw(&self) -> f64 { self.yaw }
+    #[setter]
+    fn set_yaw(&mut self, val: f64) { self.yaw = val; }
+
+    pub const fn to_python_tuple(&self) -> (f64, f64, f64) {
+        self.to_tuple()
+    }
+}
 
 #[cfg(test)]
 mod tests {

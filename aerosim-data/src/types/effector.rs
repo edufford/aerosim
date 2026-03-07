@@ -25,6 +25,8 @@ impl EffectorState {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl EffectorState {

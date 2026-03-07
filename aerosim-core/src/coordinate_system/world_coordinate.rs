@@ -237,6 +237,8 @@ impl WorldCoordinate {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl WorldCoordinate {

@@ -35,23 +35,6 @@ impl Ellipsoid {
     }
 }
 
-#[cfg(feature = "python")]
-#[pymethods]
-impl Ellipsoid {
-    #[staticmethod]
-    #[pyo3(name = "wgs84")]
-    pub fn py_wgs84() -> Self {
-        Self::wgs84()
-    }
-
-    #[staticmethod]
-    #[pyo3(name = "custom")]
-    #[pyo3(signature = (equatorial_radius = 0.0, flattening_factor = 0.0))]
-    pub fn py_custom(equatorial_radius: f64, flattening_factor: f64) -> Self {
-        Self::custom(equatorial_radius, flattening_factor)
-    }
-}
-
 pub trait GeoidModel: Send + Sync {
     fn geoid_height(&self, lat: f64, lon: f64) -> f64;
 }
@@ -89,21 +72,6 @@ impl Geoid {
     }
 }
 
-#[cfg(feature = "python")]
-#[pymethods]
-impl Geoid {
-    #[staticmethod]
-    #[pyo3(name = "egm08")]
-    pub fn py_egm08() -> Self {
-        Self::egm08()
-    }
-
-    #[pyo3(name = "get_geoid_height")]
-    pub fn py_get_geoid_height(&self, lat: f64, lon: f64) -> f64 {
-        self.get_geoid_height(lat, lon)
-    }
-}
-
 #[cfg_attr(feature = "python", pyclass)]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GeodeticBounds {
@@ -121,15 +89,6 @@ impl GeodeticBounds {
             lon_min,
             lon_max,
         }
-    }
-}
-
-#[cfg(feature = "python")]
-#[pymethods]
-impl GeodeticBounds {
-    #[new]
-    pub fn py_new(lat_min: f64, lat_max: f64, lon_min: f64, lon_max: f64) -> Self {
-        Self::new(lat_min, lat_max, lon_min, lon_max)
     }
 }
 
@@ -256,31 +215,6 @@ impl OffsetMap {
     }
 }
 
-#[cfg(feature = "python")]
-#[pymethods]
-impl OffsetMap {
-    #[new]
-    pub fn py_new(
-        bounds: GeodeticBounds,
-        lat_resolution: usize,
-        lon_resolution: usize,
-        offsets: Vec<f64>,
-    ) -> Self {
-        Self::new(bounds, lat_resolution, lon_resolution, offsets)
-    }
-
-    #[staticmethod]
-    #[pyo3(name = "from_json")]
-    pub fn py_from_json(file_path: &str) -> Self {
-        Self::from_json(file_path)
-    }
-
-    #[pyo3(name = "get_offset")]
-    pub fn py_get_offset(&self, lat: f64, lon: f64) -> f64 {
-        self.get_offset(lat, lon)
-    }
-}
-
 // Haversine distance in meters from (lat1, lon1) to (lat2, lon2)
 pub fn haversine_distance_meters(
     lat1_deg: f64,
@@ -341,6 +275,74 @@ pub fn deviation_from_course_meters(
     // bearings between course and the line from course start to position.
     let deviation = dist_to_course_pt1 * angle_diff.to_radians().sin();
     deviation
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Ellipsoid {
+    #[staticmethod]
+    #[pyo3(name = "wgs84")]
+    pub fn py_wgs84() -> Self {
+        Self::wgs84()
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "custom")]
+    #[pyo3(signature = (equatorial_radius = 0.0, flattening_factor = 0.0))]
+    pub fn py_custom(equatorial_radius: f64, flattening_factor: f64) -> Self {
+        Self::custom(equatorial_radius, flattening_factor)
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Geoid {
+    #[staticmethod]
+    #[pyo3(name = "egm08")]
+    pub fn py_egm08() -> Self {
+        Self::egm08()
+    }
+
+    #[pyo3(name = "get_geoid_height")]
+    pub fn py_get_geoid_height(&self, lat: f64, lon: f64) -> f64 {
+        self.get_geoid_height(lat, lon)
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl GeodeticBounds {
+    #[new]
+    pub fn py_new(lat_min: f64, lat_max: f64, lon_min: f64, lon_max: f64) -> Self {
+        Self::new(lat_min, lat_max, lon_min, lon_max)
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl OffsetMap {
+    #[new]
+    pub fn py_new(
+        bounds: GeodeticBounds,
+        lat_resolution: usize,
+        lon_resolution: usize,
+        offsets: Vec<f64>,
+    ) -> Self {
+        Self::new(bounds, lat_resolution, lon_resolution, offsets)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_json")]
+    pub fn py_from_json(file_path: &str) -> Self {
+        Self::from_json(file_path)
+    }
+
+    #[pyo3(name = "get_offset")]
+    pub fn py_get_offset(&self, lat: f64, lon: f64) -> f64 {
+        self.get_offset(lat, lon)
+    }
 }
 
 #[cfg(feature = "python")]

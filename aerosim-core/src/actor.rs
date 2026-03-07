@@ -44,6 +44,8 @@ impl Actor {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl Actor {

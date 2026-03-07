@@ -45,29 +45,6 @@ impl Vector3 {
     }
 }
 
-#[cfg(feature = "python")]
-#[pymethods]
-impl Vector3 {
-    #[new]
-    #[pyo3(signature = (x=Vector3::default().x, y=Vector3::default().y, z=Vector3::default().z))]
-    fn py_new(x: f64, y: f64, z: f64) -> Self {
-        Self::new(x, y, z)
-    }
-
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
-        let dict = PyDict::new(py);
-        dict.set_item("x", self.x)?;
-        dict.set_item("y", self.y)?;
-        dict.set_item("z", self.z)?;
-        Ok(dict.into())
-    }
-
-    #[classattr]
-    fn __type_support__() -> Py<PyCapsule> {
-        PyTypeSupport::create::<Self>()
-    }
-}
-
 #[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
 pub struct Quaternion {
@@ -94,6 +71,47 @@ impl Quaternion {
     }
 }
 
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
+pub struct Pose {
+    pub position: Vector3,
+    pub orientation: Quaternion,
+}
+
+impl Pose {
+    pub fn new(position: Vector3, orientation: Quaternion) -> Self {
+        Pose {
+            position,
+            orientation,
+        }
+    }
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Vector3 {
+    #[new]
+    #[pyo3(signature = (x=Vector3::default().x, y=Vector3::default().y, z=Vector3::default().z))]
+    fn py_new(x: f64, y: f64, z: f64) -> Self {
+        Self::new(x, y, z)
+    }
+
+    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+        let dict = PyDict::new(py);
+        dict.set_item("x", self.x)?;
+        dict.set_item("y", self.y)?;
+        dict.set_item("z", self.z)?;
+        Ok(dict.into())
+    }
+
+    #[classattr]
+    fn __type_support__() -> Py<PyCapsule> {
+        PyTypeSupport::create::<Self>()
+    }
+}
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl Quaternion {
@@ -115,22 +133,6 @@ impl Quaternion {
     #[classattr]
     fn __type_support__() -> Py<PyCapsule> {
         PyTypeSupport::create::<Self>()
-    }
-}
-
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
-pub struct Pose {
-    pub position: Vector3,
-    pub orientation: Quaternion,
-}
-
-impl Pose {
-    pub fn new(position: Vector3, orientation: Quaternion) -> Self {
-        Pose {
-            position,
-            orientation,
-        }
     }
 }
 

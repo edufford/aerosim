@@ -26,6 +26,8 @@ impl Serializer for BincodeSerializer {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 impl PySerializer for BincodeSerializer {}
 

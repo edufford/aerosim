@@ -42,6 +42,18 @@ impl Header {
     }
 }
 
+impl Default for Header {
+    fn default() -> Self {
+        Header {
+            timestamp_sim: TimeStamp::new(SENTINEL_SECONDS, 0),
+            timestamp_platform: TimeStamp::now(),
+            frame_id: "".to_string(),
+        }
+    }
+}
+
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl Header {
@@ -74,16 +86,6 @@ impl Header {
         dict.set_item("timestamp_platform", self.timestamp_platform.to_dict(py)?)?;
         dict.set_item("frame_id", self.frame_id.clone())?;
         Ok(dict.into())
-    }
-}
-
-impl Default for Header {
-    fn default() -> Self {
-        Header {
-            timestamp_sim: TimeStamp::new(SENTINEL_SECONDS, 0),
-            timestamp_platform: TimeStamp::now(),
-            frame_id: "".to_string(),
-        }
     }
 }
 

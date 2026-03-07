@@ -30,6 +30,8 @@ impl JsonData {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl JsonData {

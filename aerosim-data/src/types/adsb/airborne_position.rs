@@ -29,6 +29,8 @@ pub struct AirbornePosition {
     pub lon_cpr: u32,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl AirbornePosition {

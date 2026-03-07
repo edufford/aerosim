@@ -26,6 +26,54 @@ pub struct Actor {
     pub parent_actor_uid: Option<u64>,
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
+pub struct ActorState {
+    pub pose: Pose,
+}
+
+impl ActorState {
+    pub fn new(pose: Pose) -> Self {
+        ActorState { pose }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct ActorModel {
+    pub physical_properties: PhysicalProperties,
+    pub asset_link: Option<String>,
+}
+
+impl ActorModel {
+    pub fn new(physical_properties: PhysicalProperties, asset_link: Option<String>) -> Self {
+        ActorModel {
+            physical_properties,
+            asset_link,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct PhysicalProperties {
+    pub mass: f64,
+    pub inertia_tensor: Vector3,
+    pub moment_of_inertia: Vector3,
+}
+
+impl PhysicalProperties {
+    pub fn new(mass: f64, inertia_tensor: Vector3, moment_of_inertia: Vector3) -> Self {
+        PhysicalProperties {
+            mass,
+            inertia_tensor,
+            moment_of_inertia,
+        }
+    }
+}
+
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl Actor {
@@ -70,18 +118,6 @@ impl Actor {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema)]
-#[cfg_attr(feature = "python", pyclass(get_all))]
-pub struct ActorState {
-    pub pose: Pose,
-}
-
-impl ActorState {
-    pub fn new(pose: Pose) -> Self {
-        ActorState { pose }
-    }
-}
-
 #[cfg(feature = "python")]
 #[pymethods]
 impl ActorState {
@@ -105,22 +141,6 @@ impl ActorState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-pub struct ActorModel {
-    pub physical_properties: PhysicalProperties,
-    pub asset_link: Option<String>,
-}
-
-impl ActorModel {
-    pub fn new(physical_properties: PhysicalProperties, asset_link: Option<String>) -> Self {
-        ActorModel {
-            physical_properties,
-            asset_link,
-        }
-    }
-}
-
 #[cfg(feature = "python")]
 #[pymethods]
 impl ActorModel {
@@ -135,24 +155,6 @@ impl ActorModel {
         dict.set_item("physical_properties", self.physical_properties.to_dict(py)?)?;
         dict.set_item("asset_link", self.asset_link.clone())?;
         Ok(dict.into())
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-pub struct PhysicalProperties {
-    pub mass: f64,
-    pub inertia_tensor: Vector3,
-    pub moment_of_inertia: Vector3,
-}
-
-impl PhysicalProperties {
-    pub fn new(mass: f64, inertia_tensor: Vector3, moment_of_inertia: Vector3) -> Self {
-        PhysicalProperties {
-            mass,
-            inertia_tensor,
-            moment_of_inertia,
-        }
     }
 }
 

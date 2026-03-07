@@ -42,6 +42,8 @@ impl Metadata {
     }
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl Metadata {

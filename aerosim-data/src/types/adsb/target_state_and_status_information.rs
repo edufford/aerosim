@@ -25,6 +25,8 @@ pub struct TargetStateAndStatusInformation {
     pub lnav: bool,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl TargetStateAndStatusInformation {

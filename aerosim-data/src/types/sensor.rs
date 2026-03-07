@@ -30,40 +30,6 @@ pub enum SensorType {
     RADAR,
 }
 
-#[cfg(feature = "python")]
-#[pymethods]
-impl SensorType {
-    #[staticmethod]
-    pub fn from_str(s: &str) -> PyResult<Self> {
-        s.parse()
-            .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid SensorType"))
-    }
-
-    pub fn __str__(&self) -> String {
-        self.to_string()
-    }
-
-    pub fn __repr__(&self) -> String {
-        format!("SensorType::{}", self)
-    }
-
-    #[staticmethod]
-    pub fn to_dict(py: Python) -> PyResult<PyObject> {
-        let dict = pyo3::types::PyDict::new(py);
-        for variant in [
-            SensorType::Camera,
-            SensorType::GNSS,
-            SensorType::ADSB,
-            SensorType::IMU,
-            SensorType::LIDAR,
-            SensorType::RADAR,
-        ] {
-            dict.set_item(variant.to_string(), variant.__repr__())?;
-        }
-        Ok(dict.into())
-    }
-}
-
 // Image types
 
 #[derive(Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq)]
@@ -84,41 +50,6 @@ pub enum ImageEncoding {
 pub enum ImageFormat {
     JPEG,
     PNG,
-}
-
-#[cfg(feature = "python")]
-#[pymethods]
-impl ImageEncoding {
-    #[staticmethod]
-    pub fn from_str(s: &str) -> PyResult<Self> {
-        s.parse()
-            .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid ImageEncoding"))
-    }
-
-    pub fn __str__(&self) -> String {
-        self.to_string()
-    }
-
-    pub fn __repr__(&self) -> String {
-        format!("ImageEncoding::{}", self)
-    }
-
-    #[staticmethod]
-    pub fn to_dict(py: Python) -> PyResult<PyObject> {
-        let dict = pyo3::types::PyDict::new(py);
-        for variant in [
-            ImageEncoding::RGB8,
-            ImageEncoding::RGBA8,
-            ImageEncoding::BGR8,
-            ImageEncoding::BGRA8,
-            ImageEncoding::MONO8,
-            ImageEncoding::MONO16,
-            ImageEncoding::YUV422,
-        ] {
-            dict.set_item(variant.to_string(), variant.__repr__())?;
-        }
-        Ok(dict.into())
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage)]
@@ -187,6 +118,262 @@ impl Image {
             format: ImageFormat::JPEG,
             data: Cow::Owned(data),
         })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage)]
+#[cfg_attr(feature = "python", pyclass)]
+pub struct CompressedImage {
+    pub format: ImageFormat,
+
+    #[serde(
+        serialize_with = "serialize_pixels",
+        deserialize_with = "deserialize_pixels"
+    )]
+    pub data: Cow<'static, [u8]>,
+}
+
+impl CompressedImage {
+    pub fn new(format: ImageFormat, data: Vec<u8>) -> Self {
+        CompressedImage {
+            format,
+            data: Cow::Owned(data),
+        }
+    }
+
+    pub fn decompress(&self) -> Result<Image, String> {
+        let mut decompressor = turbojpeg::Decompressor::new()
+            .map_err(|e| format!("Could not create turbojpeg decompresor: {}", e))?;
+        let header = decompressor
+            .read_header(self.data.as_ref())
+            .map_err(|e| format!("Could not read header from jpeg image: {}", e))?;
+
+        // FIXME: Currently hardcoded to BGRA as used in the renderer
+        let pitch = header.width * 4;
+        let mut image = turbojpeg::Image {
+            pixels: vec![0; header.height * pitch],
+            width: header.width,
+            pitch,
+            height: header.height,
+            format: turbojpeg::PixelFormat::BGRA,
+        };
+        decompressor
+            .decompress(self.data.as_ref(), image.as_deref_mut())
+            .map_err(|e| format!("Could not decompress jpeg image: {}", e))?;
+
+        // FIXME: Currently hardcoding some values as in the renderer.
+        // TODO: Some parameters (e.g., CameraInfo) cannot be derived from the compressed image.
+        // Consider using a single data type for consistency?
+        let d: Vec<f64> = vec![0.0];
+        let k: [f64; 9] = [0.0; 9];
+        let r: [f64; 9] = [0.0; 9];
+        let p: [f64; 12] = [0.0; 12];
+        Ok(Image {
+            camera_info: CameraInfo::new(
+                header.width as u32,
+                header.height as u32,
+                "none".to_string(),
+                d,
+                k,
+                r,
+                p,
+            ),
+            height: header.height as u32,
+            width: header.width as u32,
+            encoding: ImageEncoding::BGRA8,
+            is_bigendian: 0,
+            step: pitch as u32,
+            data: Cow::Owned(image.pixels),
+        })
+    }
+}
+
+fn serialize_pixels<S>(data: &Cow<'_, [u8]>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serde_bytes::serialize(data.as_ref(), serializer)
+}
+
+fn deserialize_pixels<'de, D>(deserializer: D) -> Result<Cow<'static, [u8]>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let bytes = serde_bytes::ByteBuf::deserialize(deserializer)?;
+    let bytes = bytes.into_vec();
+    Ok(Cow::Owned(bytes))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct CameraInfo {
+    pub width: u32,
+    pub height: u32,
+    pub distortion_model: String,
+    pub d: Vec<f64>,
+    pub k: [f64; 9],
+    pub r: [f64; 9],
+    pub p: [f64; 12],
+}
+
+impl CameraInfo {
+    pub fn new(
+        width: u32,
+        height: u32,
+        distortion_model: String,
+        d: Vec<f64>,
+        k: [f64; 9],
+        r: [f64; 9],
+        p: [f64; 12],
+    ) -> Self {
+        CameraInfo {
+            width,
+            height,
+            distortion_model,
+            d,
+            k,
+            r,
+            p,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct ADSB {
+    pub message: DownlinkFormat,
+}
+
+impl Default for ADSB {
+    fn default() -> Self {
+        ADSB {
+            message: DownlinkFormat::GNSSPositionData(
+                crate::types::adsb::gnss_position_data::GNSSPositionData::default(),
+            ),
+        }
+    }
+}
+
+impl ADSB {
+    pub fn new(message: DownlinkFormat) -> Self {
+        ADSB { message }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct GNSS {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub altitude: f64,
+    pub velocity: Vector3,
+    pub heading: f64,
+}
+
+impl GNSS {
+    pub fn new(
+        latitude: f64,
+        longitude: f64,
+        altitude: f64,
+        velocity: Vector3,
+        heading: f64,
+    ) -> Self {
+        GNSS {
+            latitude,
+            longitude,
+            altitude,
+            velocity,
+            heading,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
+pub struct IMU {
+    pub acceleration: Vector3,
+    pub gyroscope: Vector3,
+    pub magnetic_field: Vector3,
+}
+
+impl IMU {
+    pub fn new(acceleration: Vector3, gyroscope: Vector3, magnetic_field: Vector3) -> Self {
+        IMU {
+            acceleration,
+            gyroscope,
+            magnetic_field,
+        }
+    }
+}
+
+// Python interface layer
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl SensorType {
+    #[staticmethod]
+    pub fn from_str(s: &str) -> PyResult<Self> {
+        s.parse()
+            .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid SensorType"))
+    }
+
+    pub fn __str__(&self) -> String {
+        self.to_string()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("SensorType::{}", self)
+    }
+
+    #[staticmethod]
+    pub fn to_dict(py: Python) -> PyResult<PyObject> {
+        let dict = pyo3::types::PyDict::new(py);
+        for variant in [
+            SensorType::Camera,
+            SensorType::GNSS,
+            SensorType::ADSB,
+            SensorType::IMU,
+            SensorType::LIDAR,
+            SensorType::RADAR,
+        ] {
+            dict.set_item(variant.to_string(), variant.__repr__())?;
+        }
+        Ok(dict.into())
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl ImageEncoding {
+    #[staticmethod]
+    pub fn from_str(s: &str) -> PyResult<Self> {
+        s.parse()
+            .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid ImageEncoding"))
+    }
+
+    pub fn __str__(&self) -> String {
+        self.to_string()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("ImageEncoding::{}", self)
+    }
+
+    #[staticmethod]
+    pub fn to_dict(py: Python) -> PyResult<PyObject> {
+        let dict = pyo3::types::PyDict::new(py);
+        for variant in [
+            ImageEncoding::RGB8,
+            ImageEncoding::RGBA8,
+            ImageEncoding::BGR8,
+            ImageEncoding::BGRA8,
+            ImageEncoding::MONO8,
+            ImageEncoding::MONO16,
+            ImageEncoding::YUV422,
+        ] {
+            dict.set_item(variant.to_string(), variant.__repr__())?;
+        }
+        Ok(dict.into())
     }
 }
 
@@ -306,73 +493,6 @@ impl Image {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage)]
-#[cfg_attr(feature = "python", pyclass)]
-pub struct CompressedImage {
-    pub format: ImageFormat,
-
-    #[serde(
-        serialize_with = "serialize_pixels",
-        deserialize_with = "deserialize_pixels"
-    )]
-    pub data: Cow<'static, [u8]>,
-}
-
-impl CompressedImage {
-    pub fn new(format: ImageFormat, data: Vec<u8>) -> Self {
-        CompressedImage {
-            format,
-            data: Cow::Owned(data),
-        }
-    }
-
-    pub fn decompress(&self) -> Result<Image, String> {
-        let mut decompressor = turbojpeg::Decompressor::new()
-            .map_err(|e| format!("Could not create turbojpeg decompresor: {}", e))?;
-        let header = decompressor
-            .read_header(self.data.as_ref())
-            .map_err(|e| format!("Could not read header from jpeg image: {}", e))?;
-
-        // FIXME: Currently hardcoded to BGRA as used in the renderer
-        let pitch = header.width * 4;
-        let mut image = turbojpeg::Image {
-            pixels: vec![0; header.height * pitch],
-            width: header.width,
-            pitch,
-            height: header.height,
-            format: turbojpeg::PixelFormat::BGRA,
-        };
-        decompressor
-            .decompress(self.data.as_ref(), image.as_deref_mut())
-            .map_err(|e| format!("Could not decompress jpeg image: {}", e))?;
-
-        // FIXME: Currently hardcoding some values as in the renderer.
-        // TODO: Some parameters (e.g., CameraInfo) cannot be derived from the compressed image.
-        // Consider using a single data type for consistency?
-        let d: Vec<f64> = vec![0.0];
-        let k: [f64; 9] = [0.0; 9];
-        let r: [f64; 9] = [0.0; 9];
-        let p: [f64; 12] = [0.0; 12];
-        Ok(Image {
-            camera_info: CameraInfo::new(
-                header.width as u32,
-                header.height as u32,
-                "none".to_string(),
-                d,
-                k,
-                r,
-                p,
-            ),
-            height: header.height as u32,
-            width: header.width as u32,
-            encoding: ImageEncoding::BGRA8,
-            is_bigendian: 0,
-            step: pitch as u32,
-            data: Cow::Owned(image.pixels),
-        })
-    }
-}
-
 #[cfg(feature = "python")]
 #[pymethods]
 impl CompressedImage {
@@ -420,56 +540,6 @@ impl CompressedImage {
     }
 }
 
-fn serialize_pixels<S>(data: &Cow<'_, [u8]>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serde_bytes::serialize(data.as_ref(), serializer)
-}
-
-fn deserialize_pixels<'de, D>(deserializer: D) -> Result<Cow<'static, [u8]>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let bytes = serde_bytes::ByteBuf::deserialize(deserializer)?;
-    let bytes = bytes.into_vec();
-    Ok(Cow::Owned(bytes))
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-pub struct CameraInfo {
-    pub width: u32,
-    pub height: u32,
-    pub distortion_model: String,
-    pub d: Vec<f64>,
-    pub k: [f64; 9],
-    pub r: [f64; 9],
-    pub p: [f64; 12],
-}
-
-impl CameraInfo {
-    pub fn new(
-        width: u32,
-        height: u32,
-        distortion_model: String,
-        d: Vec<f64>,
-        k: [f64; 9],
-        r: [f64; 9],
-        p: [f64; 12],
-    ) -> Self {
-        CameraInfo {
-            width,
-            height,
-            distortion_model,
-            d,
-            k,
-            r,
-            p,
-        }
-    }
-}
-
 #[cfg(feature = "python")]
 #[pymethods]
 impl CameraInfo {
@@ -499,28 +569,6 @@ impl CameraInfo {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-pub struct ADSB {
-    pub message: DownlinkFormat,
-}
-
-impl Default for ADSB {
-    fn default() -> Self {
-        ADSB {
-            message: DownlinkFormat::GNSSPositionData(
-                crate::types::adsb::gnss_position_data::GNSSPositionData::default(),
-            ),
-        }
-    }
-}
-
-impl ADSB {
-    pub fn new(message: DownlinkFormat) -> Self {
-        ADSB { message }
-    }
-}
-
 #[cfg(feature = "python")]
 #[pymethods]
 impl ADSB {
@@ -534,34 +582,6 @@ impl ADSB {
         let dict = PyDict::new(py);
         let _ = dict.set_item("message", self.message.to_dict(py)?);
         Ok(dict.into())
-    }
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-pub struct GNSS {
-    pub latitude: f64,
-    pub longitude: f64,
-    pub altitude: f64,
-    pub velocity: Vector3,
-    pub heading: f64,
-}
-
-impl GNSS {
-    pub fn new(
-        latitude: f64,
-        longitude: f64,
-        altitude: f64,
-        velocity: Vector3,
-        heading: f64,
-    ) -> Self {
-        GNSS {
-            latitude,
-            longitude,
-            altitude,
-            velocity,
-            heading,
-        }
     }
 }
 
@@ -588,24 +608,6 @@ impl GNSS {
         dict.set_item("velocity", self.velocity.to_dict(py)?)?;
         dict.set_item("heading", self.heading)?;
         Ok(dict.into())
-    }
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
-pub struct IMU {
-    pub acceleration: Vector3,
-    pub gyroscope: Vector3,
-    pub magnetic_field: Vector3,
-}
-
-impl IMU {
-    pub fn new(acceleration: Vector3, gyroscope: Vector3, magnetic_field: Vector3) -> Self {
-        IMU {
-            acceleration,
-            gyroscope,
-            magnetic_field,
-        }
     }
 }
 

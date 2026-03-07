@@ -13,6 +13,8 @@ pub struct AircraftStatus {
     pub squawk: u32,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl AircraftStatus {

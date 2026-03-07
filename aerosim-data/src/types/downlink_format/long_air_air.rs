@@ -12,6 +12,8 @@ pub struct LongAirAir {
     pub altitude: u16,
 }
 
+// Python interface layer
+
 #[cfg(feature = "python")]
 #[pymethods]
 impl LongAirAir {
