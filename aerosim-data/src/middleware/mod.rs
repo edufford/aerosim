@@ -8,11 +8,16 @@ use std::{
 use async_trait::async_trait;
 use ctor::ctor;
 use enum_dispatch::enum_dispatch;
-use pyo3::{exceptions::PyRuntimeError, prelude::*};
-use pythonize::{depythonize, pythonize};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{AerosimMessage, PyTypeSupport, TimeStamp, TypeRegistry};
+use crate::types::{AerosimMessage, TimeStamp, TypeRegistry};
+
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{exceptions::PyRuntimeError, prelude::*},
+    pythonize::{depythonize, pythonize},
+};
 
 pub mod common;
 pub mod no_middleware;
@@ -105,6 +110,7 @@ pub trait Serializer {
     }
 }
 
+#[cfg(feature = "python")]
 pub trait PySerializer: Serializer {
     fn pyserialize_message_impl(
         &self,
@@ -287,6 +293,7 @@ pub trait Middleware: MiddlewareRaw {
     }
 }
 
+#[cfg(feature = "python")]
 #[allow(dead_code)]
 trait PyMiddleware: Middleware {
     async fn pypublish_impl(
@@ -312,7 +319,7 @@ trait PyMiddleware: Middleware {
             )))?;
         self.publish_raw(&type_support.type_name, topic, &payload)
             .await
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to publish topic data: {}", e)))
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 
     async fn pysubscribe_impl(
@@ -415,7 +422,7 @@ trait PyMiddleware: Middleware {
     ) -> PyResult<()> {
         self.publish_raw(message_type, topic, payload.as_bytes(py))
             .await
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to publish topic data: {}", e)))
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 
     async fn pysubscribe_raw_impl(

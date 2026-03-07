@@ -1,8 +1,9 @@
+#[cfg(feature = "python")]
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(eq)]
+#[cfg_attr(feature = "python", pyclass(eq))]
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum BDS {
     Empty(),
@@ -11,7 +12,7 @@ pub enum BDS {
     Unknown(),
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DataLinkCapability {
     pub continuation_flag: bool,
@@ -30,9 +31,13 @@ pub struct DataLinkCapability {
     pub bit_array: u16,
 }
 
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl BDS {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 
@@ -48,7 +53,7 @@ impl BDS {
             }
             Self::DataLinkCapability(dlc) => {
                 let _ = dict.set_item("type", "datalink_capability");
-                let _ = dict.set_item("datalink_capability", dlc.to_dict(py)?);
+                let _ = dict.set_item("datalink_capability", dlc.py_to_dict(py)?);
             }
             Self::Unknown() => {
                 let _ = dict.set_item("type", "unknown");
@@ -58,9 +63,11 @@ impl BDS {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl DataLinkCapability {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 

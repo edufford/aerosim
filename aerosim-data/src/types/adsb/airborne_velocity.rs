@@ -1,8 +1,10 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AirborneVelocity {
     /// Velocity subtype
@@ -27,9 +29,13 @@ pub struct AirborneVelocity {
     pub vertical_rate: Option<i16>,
 }
 
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl AirborneVelocity {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("st", self.st)?;
         let _ = dict.set_item("nac_v", self.nac_v)?;
@@ -50,6 +56,6 @@ impl AirborneVelocity {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }

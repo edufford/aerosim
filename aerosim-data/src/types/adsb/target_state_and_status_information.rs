@@ -1,8 +1,10 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TargetStateAndStatusInformation {
     pub is_fms: bool,
@@ -23,9 +25,13 @@ pub struct TargetStateAndStatusInformation {
     pub lnav: bool,
 }
 
+// Python interface layer
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl TargetStateAndStatusInformation {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("is_fms", self.is_fms)?;
         let _ = dict.set_item("altitude", self.altitude)?;
@@ -47,6 +53,6 @@ impl TargetStateAndStatusInformation {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }

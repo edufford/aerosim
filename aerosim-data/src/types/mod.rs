@@ -43,7 +43,10 @@ mod registry;
 pub use registry::TypeRegistry;
 
 mod typesupport;
-pub use typesupport::{PyTypeSupport, TypeSupport};
+pub use typesupport::TypeSupport;
+
+#[cfg(feature = "python")]
+pub use typesupport::PyTypeSupport;
 
 use serde::{Deserialize, Serialize};
 
