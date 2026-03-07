@@ -1,22 +1,30 @@
-use crate::{types::PyTypeSupport, AerosimMessage};
+use crate::AerosimMessage;
 
 use super::actor::ActorState;
 use super::geometry::Vector3;
 
-use pyo3::prelude::*;
-use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{
+        prelude::*,
+        types::{PyCapsule, PyDict},
+    },
+};
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, EnumString, Display, PartialEq)]
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 pub enum VehicleType {
     Ground,
     Aerial,
     Marine,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl VehicleType {
     #[staticmethod]
@@ -48,7 +56,7 @@ impl VehicleType {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 pub struct VehicleState {
     pub state: ActorState,
     pub velocity: Vector3,
@@ -57,10 +65,7 @@ pub struct VehicleState {
     pub angular_acceleration: Vector3,
 }
 
-#[pymethods]
 impl VehicleState {
-    #[new]
-    #[pyo3(signature = (state=ActorState::default(), velocity=Vector3::default(), angular_velocity=Vector3::default(), acceleration=Vector3::default(), angular_acceleration=Vector3::default()))]
     pub fn new(
         state: ActorState,
         velocity: Vector3,
@@ -75,6 +80,22 @@ impl VehicleState {
             acceleration,
             angular_acceleration,
         }
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl VehicleState {
+    #[new]
+    #[pyo3(signature = (state=ActorState::default(), velocity=Vector3::default(), angular_velocity=Vector3::default(), acceleration=Vector3::default(), angular_acceleration=Vector3::default()))]
+    fn py_new(
+        state: ActorState,
+        velocity: Vector3,
+        angular_velocity: Vector3,
+        acceleration: Vector3,
+        angular_acceleration: Vector3,
+    ) -> Self {
+        Self::new(state, velocity, angular_velocity, acceleration, angular_acceleration)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

@@ -1,11 +1,16 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::AerosimMessage;
 
-use super::PyTypeSupport;
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{
+        prelude::*,
+        types::{PyCapsule, PyDict},
+    },
+};
 
 // ----------------------------------------------------------------------------
 // Aircraft Trajectory Visualization Command
@@ -14,19 +19,14 @@ use super::PyTypeSupport;
 #[derive(
     Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Default,
 )]
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 pub struct TrajectoryVisualization {
     pub settings: TrajectoryVisualizationSettings,
     pub user_defined_waypoints: TrajectoryWaypoints,
     pub future_trajectory: TrajectoryWaypoints,
 }
 
-#[pymethods]
 impl TrajectoryVisualization {
-    #[new]
-    #[pyo3(signature = (settings = TrajectoryVisualizationSettings::default(),
-    user_defined_waypoints = None,
-    future_trajectory = None))]
     pub fn new(
         settings: TrajectoryVisualizationSettings,
         user_defined_waypoints: Option<TrajectoryWaypoints>,
@@ -39,6 +39,22 @@ impl TrajectoryVisualization {
             user_defined_waypoints,
             future_trajectory,
         }
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl TrajectoryVisualization {
+    #[new]
+    #[pyo3(signature = (settings = TrajectoryVisualizationSettings::default(),
+    user_defined_waypoints = None,
+    future_trajectory = None))]
+    fn py_new(
+        settings: TrajectoryVisualizationSettings,
+        user_defined_waypoints: Option<TrajectoryWaypoints>,
+        future_trajectory: Option<TrajectoryWaypoints>,
+    ) -> Self {
+        Self::new(settings, user_defined_waypoints, future_trajectory)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -59,7 +75,7 @@ impl TrajectoryVisualization {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema)]
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 pub struct TrajectoryVisualizationSettings {
     pub display_future_trajectory: bool,
     pub display_past_trajectory: bool,
@@ -78,15 +94,7 @@ impl Default for TrajectoryVisualizationSettings {
     }
 }
 
-#[pymethods]
 impl TrajectoryVisualizationSettings {
-    #[new]
-    #[pyo3(signature = (
-        display_future_trajectory=TrajectoryVisualizationSettings::default().display_future_trajectory,
-        display_past_trajectory=TrajectoryVisualizationSettings::default().display_past_trajectory,
-        highlight_user_defined_waypoints=TrajectoryVisualizationSettings::default().highlight_user_defined_waypoints,
-        number_of_future_waypoints=TrajectoryVisualizationSettings::default().number_of_future_waypoints
-    ))]
     pub fn new(
         display_future_trajectory: bool,
         display_past_trajectory: bool,
@@ -99,6 +107,31 @@ impl TrajectoryVisualizationSettings {
             highlight_user_defined_waypoints,
             number_of_future_waypoints,
         }
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl TrajectoryVisualizationSettings {
+    #[new]
+    #[pyo3(signature = (
+        display_future_trajectory=TrajectoryVisualizationSettings::default().display_future_trajectory,
+        display_past_trajectory=TrajectoryVisualizationSettings::default().display_past_trajectory,
+        highlight_user_defined_waypoints=TrajectoryVisualizationSettings::default().highlight_user_defined_waypoints,
+        number_of_future_waypoints=TrajectoryVisualizationSettings::default().number_of_future_waypoints
+    ))]
+    fn py_new(
+        display_future_trajectory: bool,
+        display_past_trajectory: bool,
+        highlight_user_defined_waypoints: bool,
+        number_of_future_waypoints: u64,
+    ) -> Self {
+        Self::new(
+            display_future_trajectory,
+            display_past_trajectory,
+            highlight_user_defined_waypoints,
+            number_of_future_waypoints,
+        )
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -125,17 +158,24 @@ impl TrajectoryVisualizationSettings {
 #[derive(
     Debug, Clone, Serialize, Deserialize, aerosim_macros::AerosimMessage, JsonSchema, Default,
 )]
-#[pyclass(get_all, set_all)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 pub struct TrajectoryWaypoints {
     pub waypoints: String,
 }
 
+impl TrajectoryWaypoints {
+    pub fn new(waypoints: String) -> Self {
+        Self { waypoints }
+    }
+}
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl TrajectoryWaypoints {
     #[new]
     #[pyo3(signature = (waypoints="".to_string()))]
-    pub fn new(waypoints: String) -> Self {
-        Self { waypoints }
+    fn py_new(waypoints: String) -> Self {
+        Self::new(waypoints)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

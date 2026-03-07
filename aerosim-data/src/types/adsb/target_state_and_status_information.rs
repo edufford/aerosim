@@ -1,8 +1,10 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TargetStateAndStatusInformation {
     pub is_fms: bool,
@@ -23,6 +25,7 @@ pub struct TargetStateAndStatusInformation {
     pub lnav: bool,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl TargetStateAndStatusInformation {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

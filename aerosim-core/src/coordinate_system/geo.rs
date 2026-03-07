@@ -1,10 +1,11 @@
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use std::fs::File;
 use std::io::Read;
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Ellipsoid {
     pub equatorial_radius: f64,
@@ -12,9 +13,7 @@ pub struct Ellipsoid {
     pub polar_radius: f64,
 }
 
-#[pymethods]
 impl Ellipsoid {
-    #[staticmethod]
     pub fn wgs84() -> Self {
         let equatorial_radius = 6378137.0;
         let flattening_factor = 1.0 / 298.257223563;
@@ -26,8 +25,6 @@ impl Ellipsoid {
         }
     }
 
-    #[staticmethod]
-    #[pyo3(signature = (equatorial_radius = 0.0, flattening_factor = 0.0))]
     pub fn custom(equatorial_radius: f64, flattening_factor: f64) -> Self {
         let polar_radius = equatorial_radius * (1.0 - flattening_factor);
         Self {
@@ -38,11 +35,28 @@ impl Ellipsoid {
     }
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
+impl Ellipsoid {
+    #[staticmethod]
+    #[pyo3(name = "wgs84")]
+    pub fn py_wgs84() -> Self {
+        Self::wgs84()
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "custom")]
+    #[pyo3(signature = (equatorial_radius = 0.0, flattening_factor = 0.0))]
+    pub fn py_custom(equatorial_radius: f64, flattening_factor: f64) -> Self {
+        Self::custom(equatorial_radius, flattening_factor)
+    }
+}
+
 pub trait GeoidModel: Send + Sync {
     fn geoid_height(&self, lat: f64, lon: f64) -> f64;
 }
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(Copy, Clone, Debug)]
 pub struct EGM08;
 
@@ -57,14 +71,12 @@ impl GeoidModel for EGM08 {
     }
 }
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 pub struct Geoid {
     model: Box<dyn GeoidModel>,
 }
 
-#[pymethods]
 impl Geoid {
-    #[staticmethod]
     pub fn egm08() -> Self {
         Self {
             model: Box::new(EGM08),
@@ -77,7 +89,22 @@ impl Geoid {
     }
 }
 
-#[pyclass]
+#[cfg(feature = "python")]
+#[pymethods]
+impl Geoid {
+    #[staticmethod]
+    #[pyo3(name = "egm08")]
+    pub fn py_egm08() -> Self {
+        Self::egm08()
+    }
+
+    #[pyo3(name = "get_geoid_height")]
+    pub fn py_get_geoid_height(&self, lat: f64, lon: f64) -> f64 {
+        self.get_geoid_height(lat, lon)
+    }
+}
+
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct GeodeticBounds {
     pub lat_min: f64,
@@ -86,9 +113,7 @@ pub struct GeodeticBounds {
     pub lon_max: f64,
 }
 
-#[pymethods]
 impl GeodeticBounds {
-    #[new]
     pub fn new(lat_min: f64, lat_max: f64, lon_min: f64, lon_max: f64) -> Self {
         GeodeticBounds {
             lat_min,
@@ -99,7 +124,16 @@ impl GeodeticBounds {
     }
 }
 
-#[pyclass]
+#[cfg(feature = "python")]
+#[pymethods]
+impl GeodeticBounds {
+    #[new]
+    pub fn py_new(lat_min: f64, lat_max: f64, lon_min: f64, lon_max: f64) -> Self {
+        Self::new(lat_min, lat_max, lon_min, lon_max)
+    }
+}
+
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct OffsetMap {
     pub bounds: GeodeticBounds,
@@ -108,9 +142,7 @@ pub struct OffsetMap {
     pub offsets: Vec<f64>,
 }
 
-#[pymethods]
 impl OffsetMap {
-    #[new]
     pub fn new(
         bounds: GeodeticBounds,
         lat_resolution: usize,
@@ -127,7 +159,6 @@ impl OffsetMap {
         }
     }
 
-    #[staticmethod]
     pub fn from_json(file_path: &str) -> Self {
         let mut file = File::open(file_path).expect("Unable to open file");
         let mut data = String::new();
@@ -225,14 +256,38 @@ impl OffsetMap {
     }
 }
 
-#[pyfunction]
+#[cfg(feature = "python")]
+#[pymethods]
+impl OffsetMap {
+    #[new]
+    pub fn py_new(
+        bounds: GeodeticBounds,
+        lat_resolution: usize,
+        lon_resolution: usize,
+        offsets: Vec<f64>,
+    ) -> Self {
+        Self::new(bounds, lat_resolution, lon_resolution, offsets)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_json")]
+    pub fn py_from_json(file_path: &str) -> Self {
+        Self::from_json(file_path)
+    }
+
+    #[pyo3(name = "get_offset")]
+    pub fn py_get_offset(&self, lat: f64, lon: f64) -> f64 {
+        self.get_offset(lat, lon)
+    }
+}
+
 // Haversine distance in meters from (lat1, lon1) to (lat2, lon2)
 pub fn haversine_distance_meters(
     lat1_deg: f64,
     lon1_deg: f64,
     lat2_deg: f64,
     lon2_deg: f64,
-) -> PyResult<f64> {
+) -> f64 {
     let r = 6371.0; // Earth radius in km
     let d_lat = (lat2_deg - lat1_deg).to_radians();
     let d_lon = (lon2_deg - lon1_deg).to_radians();
@@ -242,12 +297,11 @@ pub fn haversine_distance_meters(
             * (d_lon / 2.0).sin()
             * (d_lon / 2.0).sin();
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
-    Ok(r * c * 1000.0) // return distance in meters
+    r * c * 1000.0 // return distance in meters
 }
 
 // Bearing angle in degrees (0-360) for line from (lat1, lon1) to (lat2, lon2)
-#[pyfunction]
-pub fn bearing_deg(lat1_deg: f64, lon1_deg: f64, lat2_deg: f64, lon2_deg: f64) -> PyResult<f64> {
+pub fn bearing_deg(lat1_deg: f64, lon1_deg: f64, lat2_deg: f64, lon2_deg: f64) -> f64 {
     let lat1_rad = lat1_deg.to_radians();
     let lat2_rad = lat2_deg.to_radians();
     let delta_lon = (lon2_deg - lon1_deg).to_radians();
@@ -255,13 +309,12 @@ pub fn bearing_deg(lat1_deg: f64, lon1_deg: f64, lat2_deg: f64, lon2_deg: f64) -
     let x = lat1_rad.cos() * lat2_rad.sin() - lat1_rad.sin() * lat2_rad.cos() * delta_lon.cos();
     let bearing_rad = y.atan2(x);
     let bearing_deg = (bearing_rad.to_degrees() + 360.0) % 360.0;
-    Ok(bearing_deg)
+    bearing_deg
 }
 
 // Approximation of the perpindicular deviation distance from course in meters.
 // Calculated from the right angle triangle formed between course line and line from
 // course start to position.
-#[pyfunction]
 pub fn deviation_from_course_meters(
     course_lat1_deg: f64,
     course_lon1_deg: f64,
@@ -269,16 +322,16 @@ pub fn deviation_from_course_meters(
     course_lon2_deg: f64,
     pos_lat_deg: f64,
     pos_lon_deg: f64,
-) -> PyResult<f64> {
+) -> f64 {
     let course_bearing = bearing_deg(
         course_lat1_deg,
         course_lon1_deg,
         course_lat2_deg,
         course_lon2_deg,
-    )?;
-    let pos_bearing = bearing_deg(course_lat1_deg, course_lon1_deg, pos_lat_deg, pos_lon_deg)?;
+    );
+    let pos_bearing = bearing_deg(course_lat1_deg, course_lon1_deg, pos_lat_deg, pos_lon_deg);
     let dist_to_course_pt1 =
-        haversine_distance_meters(course_lat1_deg, course_lon1_deg, pos_lat_deg, pos_lon_deg)?;
+        haversine_distance_meters(course_lat1_deg, course_lon1_deg, pos_lat_deg, pos_lon_deg);
     let mut angle_diff = (pos_bearing - course_bearing) % 360.0;
     if angle_diff > 180.0 {
         angle_diff -= 360.0;
@@ -287,5 +340,45 @@ pub fn deviation_from_course_meters(
     // distance from course start point to position and theta as the difference in
     // bearings between course and the line from course start to position.
     let deviation = dist_to_course_pt1 * angle_diff.to_radians().sin();
-    Ok(deviation)
+    deviation
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(name = "haversine_distance_meters")]
+pub fn py_haversine_distance_meters(
+    lat1_deg: f64,
+    lon1_deg: f64,
+    lat2_deg: f64,
+    lon2_deg: f64,
+) -> PyResult<f64> {
+    Ok(haversine_distance_meters(lat1_deg, lon1_deg, lat2_deg, lon2_deg))
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(name = "bearing_deg")]
+pub fn py_bearing_deg(lat1_deg: f64, lon1_deg: f64, lat2_deg: f64, lon2_deg: f64) -> PyResult<f64> {
+    Ok(bearing_deg(lat1_deg, lon1_deg, lat2_deg, lon2_deg))
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(name = "deviation_from_course_meters")]
+pub fn py_deviation_from_course_meters(
+    course_lat1_deg: f64,
+    course_lon1_deg: f64,
+    course_lat2_deg: f64,
+    course_lon2_deg: f64,
+    pos_lat_deg: f64,
+    pos_lon_deg: f64,
+) -> PyResult<f64> {
+    Ok(deviation_from_course_meters(
+        course_lat1_deg,
+        course_lon1_deg,
+        course_lat2_deg,
+        course_lon2_deg,
+        pos_lat_deg,
+        pos_lon_deg,
+    ))
 }

@@ -1,27 +1,32 @@
-use pyo3::prelude::*;
 // use pyo3::wrap_pyfunction;
 
 // -------------------------------------------------------------------------
 // Aerosimcore classes
 
 pub mod actor;
-use crate::actor::Actor;
 
 pub mod math;
-use crate::math::rotator::Rotator;
 
 pub mod coordinate_system;
 use crate::coordinate_system::conversion_utils::*;
 use crate::coordinate_system::geo::*;
-use crate::coordinate_system::world_coordinate::*;
 
 pub mod trajectory;
 
 pub mod path;
 
+#[cfg(feature = "python")]
+use {
+    pyo3::prelude::*,
+    crate::actor::Actor,
+    crate::math::rotator::Rotator,
+    crate::coordinate_system::world_coordinate::*,
+};
+
 // -------------------------------------------------------------------------
 // Python module exports
 
+#[cfg(feature = "python")]
 #[pymodule]
 fn _aerocore(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Actor>()?;
@@ -40,18 +45,18 @@ fn _aerocore(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cartesian_to_ned, m)?)?;
     m.add_function(wrap_pyfunction!(msl_to_hae, m)?)?;
     m.add_function(wrap_pyfunction!(hae_to_msl, m)?)?;
-    m.add_function(wrap_pyfunction!(trajectory::generate_trajectory, m)?)?;
-    m.add_function(wrap_pyfunction!(trajectory::generate_trajectory_linear, m)?)?;
+    m.add_function(wrap_pyfunction!(trajectory::py_generate_trajectory, m)?)?;
+    m.add_function(wrap_pyfunction!(trajectory::py_generate_trajectory_linear, m)?)?;
     m.add_function(wrap_pyfunction!(
-        trajectory::generate_trajectory_from_adsb_csv,
+        trajectory::py_generate_trajectory_from_adsb_csv,
         m
     )?)?;
     m.add_function(wrap_pyfunction!(msl_to_hae_with_offset, m)?)?;
     m.add_function(wrap_pyfunction!(hae_to_msl_with_offset, m)?)?;
-    m.add_function(wrap_pyfunction!(haversine_distance_meters, m)?)?;
-    m.add_function(wrap_pyfunction!(bearing_deg, m)?)?;
-    m.add_function(wrap_pyfunction!(deviation_from_course_meters, m)?)?;
+    m.add_function(wrap_pyfunction!(py_haversine_distance_meters, m)?)?;
+    m.add_function(wrap_pyfunction!(py_bearing_deg, m)?)?;
+    m.add_function(wrap_pyfunction!(py_deviation_from_course_meters, m)?)?;
 
-    m.add_function(wrap_pyfunction!(path::read_config_file, m)?)?;
+    m.add_function(wrap_pyfunction!(path::py_read_config_file, m)?)?;
     Ok(())
 }

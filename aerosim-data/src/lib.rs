@@ -1,3 +1,4 @@
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 pub mod interfaces;
@@ -8,6 +9,7 @@ pub mod middleware;
 pub use aerosim_macros::AerosimMessage;
 pub use types::AerosimMessage;
 
+#[cfg(feature = "python")]
 #[pymodule]
 fn _aerosim_data(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     let types_module = PyModule::new(py, "types")?;

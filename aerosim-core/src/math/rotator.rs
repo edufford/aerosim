@@ -1,14 +1,12 @@
 use std::ops;
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
-#[pyclass(subclass)]
+#[cfg_attr(feature = "python", pyclass(subclass))]
 #[derive(Clone, Copy, Debug)]
 pub struct Rotator {
-    #[pyo3(get, set)]
     pub roll: f64,
-    #[pyo3(get, set)]
     pub pitch: f64,
-    #[pyo3(get, set)]
     pub yaw: f64,
 }
 
@@ -18,16 +16,42 @@ impl Default for Rotator {
     }
 }
 
-#[pymethods]
 impl Rotator {
-    #[new]
-    #[pyo3(signature = (roll = 0.0, pitch = 0.0, yaw = 0.0))]
     pub fn new(roll: f64, pitch: f64, yaw: f64) -> Self {
         Self { roll, pitch, yaw }
     }
 
-    pub const fn to_python_tuple(&self) -> (f64, f64, f64) {
+    pub const fn to_tuple(&self) -> (f64, f64, f64) {
         (self.roll, self.pitch, self.yaw)
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Rotator {
+    #[new]
+    #[pyo3(signature = (roll = 0.0, pitch = 0.0, yaw = 0.0))]
+    pub fn py_new(roll: f64, pitch: f64, yaw: f64) -> Self {
+        Self::new(roll, pitch, yaw)
+    }
+
+    #[getter]
+    fn roll(&self) -> f64 { self.roll }
+    #[setter]
+    fn set_roll(&mut self, val: f64) { self.roll = val; }
+
+    #[getter]
+    fn pitch(&self) -> f64 { self.pitch }
+    #[setter]
+    fn set_pitch(&mut self, val: f64) { self.pitch = val; }
+
+    #[getter]
+    fn yaw(&self) -> f64 { self.yaw }
+    #[setter]
+    fn set_yaw(&mut self, val: f64) { self.yaw = val; }
+
+    pub const fn to_python_tuple(&self) -> (f64, f64, f64) {
+        self.to_tuple()
     }
 }
 
@@ -159,9 +183,9 @@ mod tests {
     }
 
     #[test]
-    fn test_to_python_tuple() {
+    fn test_to_tuple() {
         let rotator = Rotator::new(1.0, 2.0, 3.0);
-        let result = rotator.to_python_tuple();
+        let result = rotator.to_tuple();
         assert_eq!(result, (1.0, 2.0, 3.0));
     }
 

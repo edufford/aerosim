@@ -1,4 +1,5 @@
 use crate::coordinate_system::geo::{Ellipsoid, Geoid, OffsetMap};
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 // -------------------------------------------------------------------------------
@@ -55,8 +56,8 @@ pub fn rpy_nwu_to_enu(roll: f64, pitch: f64, yaw: f64) -> (f64, f64, f64) {
 // -------------------------------------------------------------------------------
 // Geocoordinate System Conversions
 
-#[pyfunction]
-#[pyo3(signature = (lat, lon, alt, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (lat, lon, alt, ellipsoid=Ellipsoid::wgs84())))]
 pub fn lla_to_ecef(lat: f64, lon: f64, alt: f64, ellipsoid: Ellipsoid) -> (f64, f64, f64) {
     let cos_lat = lat.to_radians().cos();
     let sin_lat = lat.to_radians().sin();
@@ -74,8 +75,8 @@ pub fn lla_to_ecef(lat: f64, lon: f64, alt: f64, ellipsoid: Ellipsoid) -> (f64, 
     (x, y, z)
 }
 
-#[pyfunction]
-#[pyo3(signature = (ecef_x, ecef_y, ecef_z, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (ecef_x, ecef_y, ecef_z, ellipsoid=Ellipsoid::wgs84())))]
 pub fn ecef_to_lla(ecef_x: f64, ecef_y: f64, ecef_z: f64, ellipsoid: Ellipsoid) -> (f64, f64, f64) {
     let e2 = (ellipsoid.equatorial_radius.powi(2) - ellipsoid.polar_radius.powi(2))
         / ellipsoid.equatorial_radius.powi(2);
@@ -98,8 +99,8 @@ pub fn ecef_to_lla(ecef_x: f64, ecef_y: f64, ecef_z: f64, ellipsoid: Ellipsoid) 
     (lat, lon, alt)
 }
 
-#[pyfunction]
-#[pyo3(signature = (north, east, down, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (north, east, down, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84())))]
 pub fn ned_to_ecef(
     north: f64,
     east: f64,
@@ -124,8 +125,8 @@ pub fn ned_to_ecef(
     (origin_ecef_x + dx, origin_ecef_y + dy, origin_ecef_z + dz)
 }
 
-#[pyfunction]
-#[pyo3(signature = (ecef_x, ecef_y, ecef_z, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (ecef_x, ecef_y, ecef_z, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84())))]
 pub fn ecef_to_ned(
     ecef_x: f64,
     ecef_y: f64,
@@ -155,8 +156,8 @@ pub fn ecef_to_ned(
     (north, east, down)
 }
 
-#[pyfunction]
-#[pyo3(signature = (lat, lon, alt, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (lat, lon, alt, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84())))]
 pub fn lla_to_ned(
     lat: f64,
     lon: f64,
@@ -172,8 +173,8 @@ pub fn lla_to_ned(
     )
 }
 
-#[pyfunction]
-#[pyo3(signature = (north, east, down, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (north, east, down, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84())))]
 pub fn ned_to_lla(
     north: f64,
     east: f64,
@@ -189,8 +190,8 @@ pub fn ned_to_lla(
     ecef_to_lla(ecef_x, ecef_y, ecef_z, ellipsoid)
 }
 
-#[pyfunction]
-#[pyo3(signature = (lat, lon, alt, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (lat, lon, alt, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84())))]
 pub fn lla_to_cartesian(
     lat: f64,
     lon: f64,
@@ -210,8 +211,8 @@ pub fn lla_to_cartesian(
     (cartesian_x, cartesian_y, cartesian_z)
 }
 
-#[pyfunction]
-#[pyo3(signature = (north, east, down, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (north, east, down, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84())))]
 pub fn ned_to_cartesian(
     north: f64,
     east: f64,
@@ -233,8 +234,8 @@ pub fn ned_to_cartesian(
     (cartesian_x, cartesian_y, cartesian_z)
 }
 
-#[pyfunction]
-#[pyo3(signature = (point_x, point_y, point_z, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (point_x, point_y, point_z, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84())))]
 pub fn cartesian_to_ned(
     point_x: f64,
     point_y: f64,
@@ -252,8 +253,8 @@ pub fn cartesian_to_ned(
     )
 }
 
-#[pyfunction]
-#[pyo3(signature = (point_x, point_y, point_z, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84()))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (point_x, point_y, point_z, origin_lat, origin_lon, origin_alt, ellipsoid=Ellipsoid::wgs84())))]
 pub fn cartesian_to_lla(
     point_x: f64,
     point_y: f64,
@@ -269,8 +270,8 @@ pub fn cartesian_to_lla(
     ecef_to_lla(ecef_x, ecef_y, ecef_z, ellipsoid)
 }
 
-#[pyfunction]
-#[pyo3(signature = (lat, lon, alt, geoid))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (lat, lon, alt, geoid)))]
 pub fn msl_to_hae(lat: f64, lon: f64, alt: f64, geoid: &Geoid) -> f64 {
     let geoid_height = geoid.get_geoid_height(lat, lon);
 
@@ -278,8 +279,8 @@ pub fn msl_to_hae(lat: f64, lon: f64, alt: f64, geoid: &Geoid) -> f64 {
     hae_altitude
 }
 
-#[pyfunction]
-#[pyo3(signature = (lat, lon, alt, geoid))]
+#[cfg_attr(feature = "python", pyfunction)]
+#[cfg_attr(feature = "python", pyo3(signature = (lat, lon, alt, geoid)))]
 pub fn hae_to_msl(lat: f64, lon: f64, alt: f64, geoid: &Geoid) -> f64 {
     let geoid_height = geoid.get_geoid_height(lat, lon);
 
@@ -287,7 +288,7 @@ pub fn hae_to_msl(lat: f64, lon: f64, alt: f64, geoid: &Geoid) -> f64 {
     msl_altitude
 }
 
-#[pyfunction]
+#[cfg_attr(feature = "python", pyfunction)]
 pub fn msl_to_hae_with_offset(
     lat: f64,
     lon: f64,
@@ -302,7 +303,7 @@ pub fn msl_to_hae_with_offset(
     hae_altitude
 }
 
-#[pyfunction]
+#[cfg_attr(feature = "python", pyfunction)]
 pub fn hae_to_msl_with_offset(
     lat: f64,
     lon: f64,

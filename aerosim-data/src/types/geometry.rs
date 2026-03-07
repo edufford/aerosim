@@ -1,11 +1,18 @@
-use pyo3::prelude::*;
-use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{types::PyTypeSupport, AerosimMessage};
+use crate::AerosimMessage;
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{
+        prelude::*,
+        types::{PyCapsule, PyDict},
+    },
+};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(
     Clone,
     Copy,
@@ -32,12 +39,19 @@ impl Default for Vector3 {
     }
 }
 
+impl Vector3 {
+    pub fn new(x: f64, y: f64, z: f64) -> Self {
+        Vector3 { x, y, z }
+    }
+}
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl Vector3 {
     #[new]
     #[pyo3(signature = (x=Vector3::default().x, y=Vector3::default().y, z=Vector3::default().z))]
-    pub fn new(x: f64, y: f64, z: f64) -> Self {
-        Vector3 { x, y, z }
+    fn py_new(x: f64, y: f64, z: f64) -> Self {
+        Self::new(x, y, z)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -54,7 +68,7 @@ impl Vector3 {
     }
 }
 
-#[pyclass(get_all, set_all)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
 pub struct Quaternion {
     pub w: f64,
@@ -74,12 +88,19 @@ impl Default for Quaternion {
     }
 }
 
+impl Quaternion {
+    pub fn new(w: f64, x: f64, y: f64, z: f64) -> Self {
+        Quaternion { w, x, y, z }
+    }
+}
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl Quaternion {
     #[new]
     #[pyo3(signature = (w=Quaternion::default().w, x=Quaternion::default().x, y=Quaternion::default().y, z=Quaternion::default().z))]
-    pub fn new(w: f64, x: f64, y: f64, z: f64) -> Self {
-        Quaternion { w, x, y, z }
+    fn py_new(w: f64, x: f64, y: f64, z: f64) -> Self {
+        Self::new(w, x, y, z)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -97,22 +118,28 @@ impl Quaternion {
     }
 }
 
-#[pyclass(get_all, set_all)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, AerosimMessage, JsonSchema)]
-
 pub struct Pose {
     pub position: Vector3,
     pub orientation: Quaternion,
 }
 
-#[pymethods]
 impl Pose {
-    #[new]
     pub fn new(position: Vector3, orientation: Quaternion) -> Self {
         Pose {
             position,
             orientation,
         }
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Pose {
+    #[new]
+    fn py_new(position: Vector3, orientation: Quaternion) -> Self {
+        Self::new(position, orientation)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -128,9 +155,7 @@ impl Pose {
     }
 }
 
-// Add tests for the geometry module
 #[cfg(test)]
-
 mod tests {
 
     #[test]

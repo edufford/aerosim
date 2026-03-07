@@ -1,8 +1,10 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default, JsonSchema)]
 pub struct GNSSPositionData {
     pub latitude: f64,
@@ -14,10 +16,7 @@ pub struct GNSSPositionData {
     pub acceleration: f64,
 }
 
-#[pymethods]
 impl GNSSPositionData {
-    #[new]
-    #[pyo3(signature = (latitude=0.0, longitude=0.0, altitude=0.0, velocity=0.0, heading=0.0, ground_velocity=0.0, acceleration=0.0))]
     pub fn new(
         latitude: f64,
         longitude: f64,
@@ -36,6 +35,24 @@ impl GNSSPositionData {
             ground_velocity,
             acceleration,
         }
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl GNSSPositionData {
+    #[new]
+    #[pyo3(signature = (latitude=0.0, longitude=0.0, altitude=0.0, velocity=0.0, heading=0.0, ground_velocity=0.0, acceleration=0.0))]
+    pub fn py_new(
+        latitude: f64,
+        longitude: f64,
+        altitude: f64,
+        velocity: f64,
+        heading: f64,
+        ground_velocity: f64,
+        acceleration: f64,
+    ) -> Self {
+        Self::new(latitude, longitude, altitude, velocity, heading, ground_velocity, acceleration)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

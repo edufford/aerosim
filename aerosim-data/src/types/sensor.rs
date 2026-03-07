@@ -1,24 +1,26 @@
 use std::borrow::Cow;
 
-use pyo3::{
-    exceptions::PyRuntimeError,
-    prelude::*,
-    types::{PyCapsule, PyDict},
-};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 use turbojpeg;
 
-use crate::{
-    types::{downlink_format::DownlinkFormat, PyTypeSupport},
-    AerosimMessage,
-};
+use crate::{types::downlink_format::DownlinkFormat, AerosimMessage};
 
 use super::Vector3;
 
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{
+        exceptions::PyRuntimeError,
+        prelude::*,
+        types::{PyCapsule, PyDict},
+    },
+};
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, EnumString, Display)]
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 pub enum SensorType {
     Camera,
     GNSS,
@@ -28,6 +30,7 @@ pub enum SensorType {
     RADAR,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl SensorType {
     #[staticmethod]
@@ -64,7 +67,7 @@ impl SensorType {
 // Image types
 
 #[derive(Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq)]
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 pub enum ImageEncoding {
     RGB8,
     RGBA8,
@@ -77,12 +80,13 @@ pub enum ImageEncoding {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq)]
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 pub enum ImageFormat {
     JPEG,
     PNG,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl ImageEncoding {
     #[staticmethod]
@@ -117,25 +121,14 @@ impl ImageEncoding {
     }
 }
 
-#[pyclass]
 #[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage)]
+#[cfg_attr(feature = "python", pyclass)]
 pub struct Image {
-    #[pyo3(get, set)]
     pub camera_info: CameraInfo,
-
-    #[pyo3(get, set)]
     pub height: u32,
-
-    #[pyo3(get, set)]
     pub width: u32,
-
-    #[pyo3(get, set)]
     pub encoding: ImageEncoding,
-
-    #[pyo3(get, set)]
     pub is_bigendian: u8,
-
-    #[pyo3(get, set)]
     pub step: u32,
 
     #[serde(
@@ -145,9 +138,7 @@ pub struct Image {
     pub data: Cow<'static, [u8]>,
 }
 
-#[pymethods]
 impl Image {
-    #[new]
     pub fn new(
         camera_info: CameraInfo,
         height: u32,
@@ -168,12 +159,7 @@ impl Image {
         }
     }
 
-    #[getter]
-    fn data(&self) -> &[u8] {
-        self.data.as_ref()
-    }
-
-    pub fn compress(&self) -> PyResult<CompressedImage> {
+    pub fn compress(&self) -> Result<CompressedImage, String> {
         let pixel_format = match self.encoding {
             ImageEncoding::RGB8 => turbojpeg::PixelFormat::RGB,
             ImageEncoding::RGBA8 => turbojpeg::PixelFormat::RGBA,
@@ -189,19 +175,105 @@ impl Image {
             format: pixel_format,
         };
 
-        let mut compressor = turbojpeg::Compressor::new().map_err(|e| {
-            PyRuntimeError::new_err(format!("Could not create turbojpeg compressor: {}", e))
-        })?;
+        let mut compressor = turbojpeg::Compressor::new()
+            .map_err(|e| format!("Could not create turbojpeg compressor: {}", e))?;
         let _ = compressor.set_quality(80);
         let _ = compressor.set_subsamp(turbojpeg::Subsamp::Sub2x2);
-        let data = compressor.compress_to_vec(raw_img).map_err(|e| {
-            PyRuntimeError::new_err(format!("Could not compress raw image to jpeg: {}", e))
-        })?;
+        let data = compressor
+            .compress_to_vec(raw_img)
+            .map_err(|e| format!("Could not compress raw image to jpeg: {}", e))?;
 
         Ok(CompressedImage {
             format: ImageFormat::JPEG,
             data: Cow::Owned(data),
         })
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Image {
+    #[new]
+    fn py_new(
+        camera_info: CameraInfo,
+        height: u32,
+        width: u32,
+        encoding: ImageEncoding,
+        is_bigendian: u8,
+        step: u32,
+        data: Vec<u8>,
+    ) -> Self {
+        Self::new(camera_info, height, width, encoding, is_bigendian, step, data)
+    }
+
+    #[getter]
+    fn camera_info(&self) -> CameraInfo {
+        self.camera_info.clone()
+    }
+
+    #[setter]
+    fn set_camera_info(&mut self, camera_info: CameraInfo) {
+        self.camera_info = camera_info;
+    }
+
+    #[getter]
+    fn height(&self) -> u32 {
+        self.height
+    }
+
+    #[setter]
+    fn set_height(&mut self, height: u32) {
+        self.height = height;
+    }
+
+    #[getter]
+    fn width(&self) -> u32 {
+        self.width
+    }
+
+    #[setter]
+    fn set_width(&mut self, width: u32) {
+        self.width = width;
+    }
+
+    #[getter]
+    fn encoding(&self) -> ImageEncoding {
+        self.encoding.clone()
+    }
+
+    #[setter]
+    fn set_encoding(&mut self, encoding: ImageEncoding) {
+        self.encoding = encoding;
+    }
+
+    #[getter]
+    fn is_bigendian(&self) -> u8 {
+        self.is_bigendian
+    }
+
+    #[setter]
+    fn set_is_bigendian(&mut self, is_bigendian: u8) {
+        self.is_bigendian = is_bigendian;
+    }
+
+    #[getter]
+    fn step(&self) -> u32 {
+        self.step
+    }
+
+    #[setter]
+    fn set_step(&mut self, step: u32) {
+        self.step = step;
+    }
+
+    #[getter]
+    fn data(&self) -> &[u8] {
+        self.data.as_ref()
+    }
+
+    #[pyo3(name = "compress")]
+    pub fn py_compress(&self) -> PyResult<CompressedImage> {
+        self.compress().map_err(PyRuntimeError::new_err)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -234,10 +306,9 @@ impl Image {
     }
 }
 
-#[pyclass]
 #[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage)]
+#[cfg_attr(feature = "python", pyclass)]
 pub struct CompressedImage {
-    #[pyo3(get, set)]
     pub format: ImageFormat,
 
     #[serde(
@@ -247,9 +318,7 @@ pub struct CompressedImage {
     pub data: Cow<'static, [u8]>,
 }
 
-#[pymethods]
 impl CompressedImage {
-    #[new]
     pub fn new(format: ImageFormat, data: Vec<u8>) -> Self {
         CompressedImage {
             format,
@@ -257,18 +326,12 @@ impl CompressedImage {
         }
     }
 
-    #[getter]
-    fn data(&self) -> &[u8] {
-        self.data.as_ref()
-    }
-
-    fn decompress(&self) -> PyResult<Image> {
-        let mut decompressor = turbojpeg::Decompressor::new().map_err(|e| {
-            PyRuntimeError::new_err(format!("Could not create turbojpeg decompresor: {}", e))
-        })?;
-        let header = decompressor.read_header(self.data.as_ref()).map_err(|e| {
-            PyRuntimeError::new_err(format!("Could not read header from jpeg image: {}", e))
-        })?;
+    pub fn decompress(&self) -> Result<Image, String> {
+        let mut decompressor = turbojpeg::Decompressor::new()
+            .map_err(|e| format!("Could not create turbojpeg decompresor: {}", e))?;
+        let header = decompressor
+            .read_header(self.data.as_ref())
+            .map_err(|e| format!("Could not read header from jpeg image: {}", e))?;
 
         // FIXME: Currently hardcoded to BGRA as used in the renderer
         let pitch = header.width * 4;
@@ -281,9 +344,7 @@ impl CompressedImage {
         };
         decompressor
             .decompress(self.data.as_ref(), image.as_deref_mut())
-            .map_err(|e| {
-                PyRuntimeError::new_err(format!("Could not decompress jpeg image: {}", e))
-            })?;
+            .map_err(|e| format!("Could not decompress jpeg image: {}", e))?;
 
         // FIXME: Currently hardcoding some values as in the renderer.
         // TODO: Some parameters (e.g., CameraInfo) cannot be derived from the compressed image.
@@ -309,6 +370,35 @@ impl CompressedImage {
             step: pitch as u32,
             data: Cow::Owned(image.pixels),
         })
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl CompressedImage {
+    #[new]
+    fn py_new(format: ImageFormat, data: Vec<u8>) -> Self {
+        Self::new(format, data)
+    }
+
+    #[getter]
+    fn format(&self) -> ImageFormat {
+        self.format.clone()
+    }
+
+    #[setter]
+    fn set_format(&mut self, format: ImageFormat) {
+        self.format = format;
+    }
+
+    #[getter]
+    fn data(&self) -> &[u8] {
+        self.data.as_ref()
+    }
+
+    #[pyo3(name = "decompress")]
+    fn py_decompress(&self) -> PyResult<Image> {
+        self.decompress().map_err(PyRuntimeError::new_err)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -346,8 +436,8 @@ where
     Ok(Cow::Owned(bytes))
 }
 
-#[pyclass(get_all, set_all)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 pub struct CameraInfo {
     pub width: u32,
     pub height: u32,
@@ -358,9 +448,7 @@ pub struct CameraInfo {
     pub p: [f64; 12],
 }
 
-#[pymethods]
 impl CameraInfo {
-    #[new]
     pub fn new(
         width: u32,
         height: u32,
@@ -380,6 +468,23 @@ impl CameraInfo {
             p,
         }
     }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl CameraInfo {
+    #[new]
+    fn py_new(
+        width: u32,
+        height: u32,
+        distortion_model: String,
+        d: Vec<f64>,
+        k: [f64; 9],
+        r: [f64; 9],
+        p: [f64; 12],
+    ) -> Self {
+        Self::new(width, height, distortion_model, d, k, r, p)
+    }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
@@ -394,8 +499,8 @@ impl CameraInfo {
     }
 }
 
-#[pyclass(get_all, set_all)]
 #[derive(Clone, Debug, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 pub struct ADSB {
     pub message: DownlinkFormat,
 }
@@ -410,12 +515,19 @@ impl Default for ADSB {
     }
 }
 
+impl ADSB {
+    pub fn new(message: DownlinkFormat) -> Self {
+        ADSB { message }
+    }
+}
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl ADSB {
     #[new]
     #[pyo3(signature = (message=DownlinkFormat::GNSSPositionData(crate::types::adsb::gnss_position_data::GNSSPositionData::default())))]
-    pub fn new(message: DownlinkFormat) -> Self {
-        ADSB { message }
+    fn py_new(message: DownlinkFormat) -> Self {
+        Self::new(message)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -425,8 +537,8 @@ impl ADSB {
     }
 }
 
-#[pyclass(get_all, set_all)]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 pub struct GNSS {
     pub latitude: f64,
     pub longitude: f64,
@@ -435,10 +547,7 @@ pub struct GNSS {
     pub heading: f64,
 }
 
-#[pymethods]
 impl GNSS {
-    #[new]
-    #[pyo3(signature = (latitude=0.0, longitude=0.0, altitude=0.0, velocity=Vector3::default(), heading=0.0))]
     pub fn new(
         latitude: f64,
         longitude: f64,
@@ -454,6 +563,22 @@ impl GNSS {
             heading,
         }
     }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl GNSS {
+    #[new]
+    #[pyo3(signature = (latitude=0.0, longitude=0.0, altitude=0.0, velocity=Vector3::default(), heading=0.0))]
+    fn py_new(
+        latitude: f64,
+        longitude: f64,
+        altitude: f64,
+        velocity: Vector3,
+        heading: f64,
+    ) -> Self {
+        Self::new(latitude, longitude, altitude, velocity, heading)
+    }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
@@ -466,24 +591,31 @@ impl GNSS {
     }
 }
 
-#[pyclass(get_all, set_all)]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, AerosimMessage, JsonSchema)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 pub struct IMU {
-    acceleration: Vector3,
-    gyroscope: Vector3,
-    magnetic_field: Vector3,
+    pub acceleration: Vector3,
+    pub gyroscope: Vector3,
+    pub magnetic_field: Vector3,
 }
 
-#[pymethods]
 impl IMU {
-    #[new]
-    #[pyo3(signature = (acceleration=Vector3::default(), gyroscope=Vector3::default(), magnetic_field=Vector3::default()))]
     pub fn new(acceleration: Vector3, gyroscope: Vector3, magnetic_field: Vector3) -> Self {
         IMU {
             acceleration,
             gyroscope,
             magnetic_field,
         }
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl IMU {
+    #[new]
+    #[pyo3(signature = (acceleration=Vector3::default(), gyroscope=Vector3::default(), magnetic_field=Vector3::default()))]
+    fn py_new(acceleration: Vector3, gyroscope: Vector3, magnetic_field: Vector3) -> Self {
+        Self::new(acceleration, gyroscope, magnetic_field)
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

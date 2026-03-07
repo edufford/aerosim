@@ -1,10 +1,12 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::types::{ADSBVersion, CapabilityClassAirborne, CapabilityClassSurface, OperationalMode};
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AircraftOperationStatusAirborne {
     pub capability_class: CapabilityClassAirborne,
@@ -19,6 +21,7 @@ pub struct AircraftOperationStatusAirborne {
     pub sil_supplement: u8,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl AircraftOperationStatusAirborne {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -53,7 +56,7 @@ impl AircraftOperationStatusAirborne {
     }
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AircraftOperationStatusSurface {
     pub capability_class: CapabilityClassSurface,
@@ -69,6 +72,7 @@ pub struct AircraftOperationStatusSurface {
     pub sil_supplement: u8,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl AircraftOperationStatusSurface {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

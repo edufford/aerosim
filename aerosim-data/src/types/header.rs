@@ -1,11 +1,12 @@
 use super::timestamp::TimeStamp;
-use pyo3::prelude::*;
-use pyo3::types::PyDict;
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
 
 const SENTINEL_SECONDS: i32 = i32::MIN;
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Header {
     /// Discrete simulation time.
@@ -19,9 +20,7 @@ pub struct Header {
     pub frame_id: String,
 }
 
-#[pymethods]
 impl Header {
-    #[new]
     pub fn new(timestamp_sim: TimeStamp, timestamp_platform: TimeStamp, frame_id: &str) -> Self {
         Header {
             timestamp_sim,
@@ -30,13 +29,6 @@ impl Header {
         }
     }
 
-    #[staticmethod]
-    #[pyo3(name = "default")]
-    pub fn _default() -> Self {
-        Self::default()
-    }
-
-    #[staticmethod]
     pub fn with_timestamp(timestamp: TimeStamp) -> Self {
         Header {
             timestamp_sim: timestamp,
@@ -48,6 +40,33 @@ impl Header {
     pub fn is_sim_time_valid(&self) -> bool {
         self.timestamp_sim.sec >= 0
     }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Header {
+    #[new]
+    #[pyo3(signature = (timestamp_sim, timestamp_platform, frame_id))]
+    fn py_new(timestamp_sim: TimeStamp, timestamp_platform: TimeStamp, frame_id: &str) -> Self {
+        Self::new(timestamp_sim, timestamp_platform, frame_id)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "default")]
+    pub fn py_default() -> Self {
+        Self::default()
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "with_timestamp")]
+    fn py_with_timestamp(timestamp: TimeStamp) -> Self {
+        Self::with_timestamp(timestamp)
+    }
+
+    #[pyo3(name = "is_sim_time_valid")]
+    fn py_is_sim_time_valid(&self) -> bool {
+        self.is_sim_time_valid()
+    }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
@@ -58,17 +77,15 @@ impl Header {
     }
 }
 
-
 impl Default for Header {
     fn default() -> Self {
         Header {
             timestamp_sim: TimeStamp::new(SENTINEL_SECONDS, 0),
             timestamp_platform: TimeStamp::now(),
-            frame_id: "".to_string()
+            frame_id: "".to_string(),
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

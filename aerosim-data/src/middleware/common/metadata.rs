@@ -1,12 +1,14 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::TimeStamp;
 
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
 const SENTINEL_SECONDS: i32 = i32::MIN;
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct Metadata {
     pub topic: String,
@@ -20,10 +22,7 @@ pub struct Metadata {
     pub timestamp_platform: TimeStamp,
 }
 
-#[pymethods]
 impl Metadata {
-    #[new]
-    #[pyo3(signature = (topic, type_name, timestamp_sim=None, timestamp_platform=None))]
     pub fn new(
         topic: &str,
         type_name: &str,
@@ -40,6 +39,26 @@ impl Metadata {
 
     pub fn is_sim_time_valid(&self) -> bool {
         self.timestamp_sim.sec >= 0
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl Metadata {
+    #[new]
+    #[pyo3(signature = (topic, type_name, timestamp_sim=None, timestamp_platform=None))]
+    fn py_new(
+        topic: &str,
+        type_name: &str,
+        timestamp_sim: Option<TimeStamp>,
+        timestamp_platform: Option<TimeStamp>,
+    ) -> Self {
+        Self::new(topic, type_name, timestamp_sim, timestamp_platform)
+    }
+
+    #[pyo3(name = "is_sim_time_valid")]
+    fn py_is_sim_time_valid(&self) -> bool {
+        self.is_sim_time_valid()
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

@@ -1,16 +1,18 @@
+#[cfg(feature = "python")]
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::adsb::types::{Capability, ICAOAddress};
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AllCallReply {
     pub icao: ICAOAddress,
     pub capability: Capability,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl AllCallReply {
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {

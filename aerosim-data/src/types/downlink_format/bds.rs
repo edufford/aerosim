@@ -1,8 +1,9 @@
+#[cfg(feature = "python")]
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(eq)]
+#[cfg_attr(feature = "python", pyclass(eq))]
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum BDS {
     Empty(),
@@ -11,7 +12,7 @@ pub enum BDS {
     Unknown(),
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DataLinkCapability {
     pub continuation_flag: bool,
@@ -30,6 +31,7 @@ pub struct DataLinkCapability {
     pub bit_array: u16,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl BDS {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -58,6 +60,7 @@ impl BDS {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl DataLinkCapability {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

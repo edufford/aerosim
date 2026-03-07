@@ -6,7 +6,6 @@ use std::{
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use pyo3::prelude::*;
 use rdkafka::{
     admin::{AdminClient, AdminOptions, NewTopic, TopicReplication},
     client::DefaultClientContext,
@@ -19,15 +18,18 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use tokio::task;
 
-use crate::{
-    middleware::{
-        CallbackClosureRaw, Metadata, Middleware, MiddlewareRaw, PyMiddleware, PySerializer,
-        Serializer, SerializerEnum,
-    },
-    types::TimeStamp,
+use crate::middleware::{
+    CallbackClosureRaw, Middleware, MiddlewareRaw, Serializer, SerializerEnum,
 };
 
-#[pyclass]
+#[cfg(feature = "python")]
+use {
+    crate::middleware::{Metadata, PyMiddleware, PySerializer},
+    crate::types::TimeStamp,
+    pyo3::prelude::*,
+};
+
+#[cfg_attr(feature = "python", pyclass)]
 pub struct KafkaSerializer;
 
 impl Serializer for KafkaSerializer {
@@ -44,9 +46,10 @@ impl Serializer for KafkaSerializer {
     }
 }
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 pub struct KafkaMiddleware {
-    runtime: Arc<tokio::runtime::Runtime>,
+    #[allow(dead_code)]
+    runtime: Arc<tokio::runtime::Runtime>, // Used only in #[pymethods] when python feature is enabled
     admin: OnceLock<AdminClient<DefaultClientContext>>,
     producer: OnceLock<Arc<FutureProducer>>,
     consumers: Mutex<Vec<Arc<StreamConsumer>>>,
@@ -175,16 +178,15 @@ impl MiddlewareRaw for KafkaMiddleware {
                 )
             })),
         };
-        match producer
+        producer
             .send(
                 FutureRecord::to(topic).key("key").payload(payload),
                 Duration::from_secs(0),
             )
             .await
-        {
-            Ok(_) => {}
-            Err(e) => println!("Failed to publish topic {} with error: {:?}", topic, e.0),
-        };
+            .map_err(|e| -> Box<dyn Error> {
+                format!("Failed to publish topic {} with error: {:?}", topic, e.0).into()
+            })?;
 
         Ok(())
     }
@@ -295,8 +297,10 @@ impl Middleware for KafkaMiddleware {
     }
 }
 
+#[cfg(feature = "python")]
 impl PyMiddleware for KafkaMiddleware {}
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl KafkaMiddleware {
     #[new]
@@ -383,8 +387,10 @@ impl KafkaMiddleware {
     }
 }
 
+#[cfg(feature = "python")]
 impl PySerializer for KafkaSerializer {}
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl KafkaSerializer {
     #[new]

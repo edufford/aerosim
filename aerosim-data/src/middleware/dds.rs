@@ -7,15 +7,19 @@ use std::{
 
 use async_trait::async_trait;
 use cdr::{CdrLe, Infinite};
-use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     middleware::{
-        CallbackClosureRaw, Metadata, Middleware, MiddlewareRaw, PyMiddleware, PySerializer,
-        Serializer, SerializerEnum,
+        CallbackClosureRaw, Metadata, Middleware, MiddlewareRaw, Serializer, SerializerEnum,
     },
     types::TimeStamp,
+};
+
+#[cfg(feature = "python")]
+use {
+    crate::middleware::{PyMiddleware, PySerializer},
+    pyo3::{exceptions::PyRuntimeError, prelude::*},
 };
 
 // Safe abstraction for cyclonedds and cyclors.
@@ -283,7 +287,7 @@ mod cyclonedds {
     }
 }
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 pub struct DDSSerializer;
 
 impl Serializer for DDSSerializer {
@@ -300,7 +304,7 @@ impl Serializer for DDSSerializer {
     }
 }
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 pub struct DDSMiddleware {
     participant: cyclonedds::DDSParticipant,
     writers: Mutex<HashMap<String, Arc<cyclonedds::DDSWriter>>>,
@@ -437,8 +441,10 @@ impl Middleware for DDSMiddleware {
     }
 }
 
+#[cfg(feature = "python")]
 impl PyMiddleware for DDSMiddleware {}
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl DDSMiddleware {
     #[new]
@@ -517,8 +523,10 @@ impl DDSMiddleware {
     }
 }
 
+#[cfg(feature = "python")]
 impl PySerializer for DDSSerializer {}
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl DDSSerializer {
     #[new]
@@ -591,5 +599,4 @@ impl DDSSerializer {
         let serializer = SerializerEnum::from(DDSSerializer {});
         self.pydeserialize_to_json_impl(py, &serializer, type_name, payload)
     }
-
 }

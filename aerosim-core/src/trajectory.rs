@@ -7,6 +7,7 @@ use std::{error::Error, io::Write};
 use aerosim_data::types::{ActorState, Pose, Quaternion, TimeStamp, Vector3, VehicleState};
 
 use csv::Reader;
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 use crate::{
@@ -85,15 +86,6 @@ fn generate_cubic_spline(times: &[f64], values: &[f64]) -> CubicSpline {
 /// origin_latlonalt: optional origin latitude, longitude, altitude, defaults to first point
 /// ellipsoid: optional ellipsoid, defaults to WGS84
 /// returns: list of vehicle states
-#[pyfunction]
-#[pyo3(signature = (
-    points,
-    time_step,
-    max_roll_rate_deg_per_second = 10.0,
-    curvature_to_roll_factor = 1.0,
-    origin_latlonalt = None,
-    ellipsoid = Ellipsoid::wgs84()
-))]
 pub fn generate_trajectory(
     // Each point: (time, lat, lon, alt, Option(roll), Option(pitch), Option(yaw), Option(is_ground_point))
     points: Vec<(
@@ -111,11 +103,9 @@ pub fn generate_trajectory(
     curvature_to_roll_factor: f64,
     origin_latlonalt: Option<(f64, f64, f64)>,
     ellipsoid: Ellipsoid,
-) -> PyResult<Vec<(TimeStamp, VehicleState)>> {
+) -> Result<Vec<(TimeStamp, VehicleState)>, String> {
     if points.len() < 4 {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            "Spline trajectory requires at least 4 points",
-        ));
+        return Err("Spline trajectory requires at least 4 points".to_string());
     }
 
     let mut sorted_points = points;
@@ -389,18 +379,14 @@ pub fn generate_trajectory(
 /// origin_latlonalt: optional origin latitude, longitude, altitude, defaults to first point
 /// ellipsoid: optional ellipsoid, defaults to WGS84
 /// returns: list of vehicle states
-#[pyfunction]
-#[pyo3(signature = (points, time_step, origin_latlonalt=None, ellipsoid=Ellipsoid::wgs84()))]
 pub fn generate_trajectory_linear(
     points: Vec<(f64, f64, f64, f64)>,
     time_step: f64,
     origin_latlonalt: Option<(f64, f64, f64)>,
     ellipsoid: Ellipsoid,
-) -> PyResult<Vec<(TimeStamp, VehicleState)>> {
+) -> Result<Vec<(TimeStamp, VehicleState)>, String> {
     if points.len() < 2 {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            "trajectory must have at least 2 points",
-        ));
+        return Err("trajectory must have at least 2 points".to_string());
     }
 
     let vec_points: Vec<(Vector3, f64)> = points
@@ -471,9 +457,7 @@ pub fn generate_trajectory_linear(
 
         let total_time = end_time - start_time;
         if total_time <= 0.0 {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "Invalid time values: end_time must be greater than start_time",
-            ));
+            return Err("Invalid time values: end_time must be greater than start_time".to_string());
         }
 
         let velocity_vector = Vector3 {
@@ -746,19 +730,6 @@ impl TrajectoryPointRecord {
     }
 }
 
-#[pyfunction]
-#[pyo3(signature = (
-    csv_filepath,
-    out_dir,
-    time_csv_column,
-    latitude_csv_column,
-    longitude_csv_column,
-    altitude_csv_column,
-    altitude_type,
-    time_type,
-    id_csv_column=None,
-    filter_id=None
-))]
 pub fn generate_trajectory_from_adsb_csv(
     csv_filepath: &str,
     out_dir: &str,
@@ -770,8 +741,8 @@ pub fn generate_trajectory_from_adsb_csv(
     time_type: &str,
     id_csv_column: Option<usize>,
     filter_id: Option<&str>,
-) -> PyResult<()> {
-    let file = File::open(csv_filepath)?;
+) -> Result<(), String> {
+    let file = File::open(csv_filepath).map_err(|e| e.to_string())?;
     let mut reader = Reader::from_reader(file);
 
     let mut single_trajectory = Vec::new();
@@ -779,7 +750,7 @@ pub fn generate_trajectory_from_adsb_csv(
 
     for record_result in reader.records() {
         let record =
-            record_result.map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+            record_result.map_err(|e| e.to_string())?;
 
         let point = TrajectoryPointRecord::from_csv_record(
             &record,
@@ -790,7 +761,7 @@ pub fn generate_trajectory_from_adsb_csv(
             altitude_type,
             time_type,
         )
-        .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+        .map_err(|e| e.to_string())?;
         if let Some(id_col) = id_csv_column {
             let csv_id_value = &record[id_col];
             if let Some(f_id) = filter_id {
@@ -819,35 +790,35 @@ pub fn generate_trajectory_from_adsb_csv(
 
     let output_path = std::path::Path::new(out_dir);
     std::fs::create_dir_all(&output_path).map_err(|e| {
-        pyo3::exceptions::PyIOError::new_err(format!("Cannot create output directory: {}", e))
+        format!("Cannot create output directory: {}", e)
     })?;
 
     if id_csv_column.is_none() {
         shift_times_to_zero(&mut single_trajectory);
 
         let json_data = serde_json::to_string_pretty(&single_trajectory)
-            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+            .map_err(|e| e.to_string())?;
 
         let out_file_path = output_path.join("generated_trajectory.json");
         let mut out_file = File::create(&out_file_path)
-            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+            .map_err(|e| e.to_string())?;
         out_file
             .write_all(json_data.as_bytes())
-            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+            .map_err(|e| e.to_string())?;
     } else {
         if let Some(f_id) = filter_id {
             if let Some(points_for_id) = id_map.get_mut(f_id) {
                 shift_times_to_zero(points_for_id);
                 let json_data = serde_json::to_string_pretty(&points_for_id)
-                    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+                    .map_err(|e| e.to_string())?;
                 let filename = format!("{}_generated_trajectory.json", f_id);
                 let out_file_path = output_path.join(&filename);
 
                 let mut out_file = File::create(&out_file_path)
-                    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+                    .map_err(|e| e.to_string())?;
                 out_file
                     .write_all(json_data.as_bytes())
-                    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+                    .map_err(|e| e.to_string())?;
             } else {
                 log::error!(
                     "No records found for filter_id '{}', no file was generated.",
@@ -858,18 +829,110 @@ pub fn generate_trajectory_from_adsb_csv(
             for (id_key, points_for_id) in id_map.iter_mut() {
                 shift_times_to_zero(points_for_id);
                 let json_data = serde_json::to_string_pretty(&points_for_id)
-                    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+                    .map_err(|e| e.to_string())?;
                 let filename = format!("{}_generated_trajectory.json", id_key);
                 let out_file_path = output_path.join(&filename);
 
                 let mut out_file = File::create(&out_file_path)
-                    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+                    .map_err(|e| e.to_string())?;
                 out_file
                     .write_all(json_data.as_bytes())
-                    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+                    .map_err(|e| e.to_string())?;
             }
         }
     }
 
     Ok(())
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(name = "generate_trajectory", signature = (
+    points,
+    time_step,
+    max_roll_rate_deg_per_second = 10.0,
+    curvature_to_roll_factor = 1.0,
+    origin_latlonalt = None,
+    ellipsoid = Ellipsoid::wgs84()
+))]
+pub fn py_generate_trajectory(
+    points: Vec<(
+        f64,
+        f64,
+        f64,
+        f64,
+        Option<f64>,
+        Option<f64>,
+        Option<f64>,
+        Option<bool>,
+    )>,
+    time_step: f64,
+    max_roll_rate_deg_per_second: f64,
+    curvature_to_roll_factor: f64,
+    origin_latlonalt: Option<(f64, f64, f64)>,
+    ellipsoid: Ellipsoid,
+) -> PyResult<Vec<(TimeStamp, VehicleState)>> {
+    generate_trajectory(
+        points,
+        time_step,
+        max_roll_rate_deg_per_second,
+        curvature_to_roll_factor,
+        origin_latlonalt,
+        ellipsoid,
+    )
+    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(name = "generate_trajectory_linear", signature = (points, time_step, origin_latlonalt=None, ellipsoid=Ellipsoid::wgs84()))]
+pub fn py_generate_trajectory_linear(
+    points: Vec<(f64, f64, f64, f64)>,
+    time_step: f64,
+    origin_latlonalt: Option<(f64, f64, f64)>,
+    ellipsoid: Ellipsoid,
+) -> PyResult<Vec<(TimeStamp, VehicleState)>> {
+    generate_trajectory_linear(points, time_step, origin_latlonalt, ellipsoid)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))
+}
+
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(name = "generate_trajectory_from_adsb_csv", signature = (
+    csv_filepath,
+    out_dir,
+    time_csv_column,
+    latitude_csv_column,
+    longitude_csv_column,
+    altitude_csv_column,
+    altitude_type,
+    time_type,
+    id_csv_column=None,
+    filter_id=None
+))]
+pub fn py_generate_trajectory_from_adsb_csv(
+    csv_filepath: &str,
+    out_dir: &str,
+    time_csv_column: usize,
+    latitude_csv_column: usize,
+    longitude_csv_column: usize,
+    altitude_csv_column: usize,
+    altitude_type: &str,
+    time_type: &str,
+    id_csv_column: Option<usize>,
+    filter_id: Option<&str>,
+) -> PyResult<()> {
+    generate_trajectory_from_adsb_csv(
+        csv_filepath,
+        out_dir,
+        time_csv_column,
+        latitude_csv_column,
+        longitude_csv_column,
+        altitude_csv_column,
+        altitude_type,
+        time_type,
+        id_csv_column,
+        filter_id,
+    )
+    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e))
 }

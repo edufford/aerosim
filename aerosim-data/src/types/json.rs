@@ -1,14 +1,16 @@
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use crate::types::PyTypeSupport;
 use crate::AerosimMessage;
 
-use pyo3::{exceptions::PyValueError, prelude::*, types::PyCapsule};
-use pythonize::{depythonize, pythonize};
-use serde::{Deserialize, Serialize};
-use serde_json;
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{exceptions::PyValueError, prelude::*, types::PyCapsule},
+    pythonize::{depythonize, pythonize},
+};
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(
     Clone, Debug, Serialize, Deserialize, PartialEq, aerosim_macros::AerosimMessage, JsonSchema,
 )]
@@ -28,6 +30,7 @@ impl JsonData {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl JsonData {
     #[new]

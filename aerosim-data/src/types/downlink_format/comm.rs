@@ -1,3 +1,4 @@
+#[cfg(feature = "python")]
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -5,13 +6,13 @@ use serde::{Deserialize, Serialize};
 use crate::types::adsb::types::ICAOAddress;
 use crate::types::downlink_format::bds::BDS;
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExtendedSquitterMilitaryApplication {
     pub reserved: u8,
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CommBAltitudeReply {
     pub icao: ICAOAddress,
@@ -19,7 +20,7 @@ pub struct CommBAltitudeReply {
     pub bds: BDS,
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CommBIdentityReply {
     pub icao: ICAOAddress,
@@ -27,12 +28,13 @@ pub struct CommBIdentityReply {
     pub bds: BDS,
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CommDExtendedLengthMessage {
     pub icao: ICAOAddress,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl CommBAltitudeReply {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -48,6 +50,7 @@ impl CommBAltitudeReply {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl CommBIdentityReply {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -63,6 +66,7 @@ impl CommBIdentityReply {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl CommDExtendedLengthMessage {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
@@ -76,6 +80,7 @@ impl CommDExtendedLengthMessage {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl ExtendedSquitterMilitaryApplication {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

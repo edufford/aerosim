@@ -1,17 +1,18 @@
+#[cfg(feature = "python")]
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::adsb::types::{FlightStatus, ICAOAddress};
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ShortAirAirSurveillance {
     pub icao: ICAOAddress,
     pub altitude: u16,
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SurveillanceAltitudeReply {
     pub icao: ICAOAddress,
@@ -19,7 +20,7 @@ pub struct SurveillanceAltitudeReply {
     pub flight_status: FlightStatus,
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SurveillanceIdentityReply {
     pub icao: ICAOAddress,
@@ -27,6 +28,7 @@ pub struct SurveillanceIdentityReply {
     pub flight_status: FlightStatus,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl ShortAirAirSurveillance {
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
@@ -41,6 +43,7 @@ impl ShortAirAirSurveillance {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl SurveillanceAltitudeReply {
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
@@ -56,6 +59,7 @@ impl SurveillanceAltitudeReply {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl SurveillanceIdentityReply {
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {

@@ -1,3 +1,4 @@
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -11,7 +12,7 @@ pub mod long_air_air;
 pub mod surveillance;
 pub mod tisb;
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum DownlinkFormat {
@@ -29,6 +30,7 @@ pub enum DownlinkFormat {
     CommDExtendedLength(comm::CommDExtendedLengthMessage),
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl DownlinkFormat {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

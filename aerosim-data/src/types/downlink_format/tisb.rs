@@ -1,10 +1,11 @@
+#[cfg(feature = "python")]
 use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::adsb::types::{ControlFieldType, ICAOAddress, ME};
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TisB {
     pub control_type: ControlFieldType,
@@ -12,6 +13,7 @@ pub struct TisB {
     pub me: ME,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl TisB {
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {

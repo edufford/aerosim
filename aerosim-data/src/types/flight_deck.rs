@@ -1,11 +1,18 @@
-use crate::{types::PyTypeSupport, AerosimMessage};
+use crate::AerosimMessage;
 
-use pyo3::prelude::*;
-use pyo3::types::{PyCapsule, PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::{Display, EnumString};
+
+#[cfg(feature = "python")]
+use {
+    crate::types::PyTypeSupport,
+    pyo3::{
+        prelude::*,
+        types::{PyCapsule, PyDict},
+    },
+};
 
 #[derive(
     Debug,
@@ -20,13 +27,20 @@ use strum_macros::{Display, EnumString};
     JsonSchema,
 )]
 #[repr(u8)]
-#[pyclass(eq, eq_int, get_all, set_all)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int, get_all, set_all))]
 pub enum HSIMode {
     GPS = 0,
     VOR1 = 1,
     VOR2 = 2,
 }
 
+impl HSIMode {
+    pub fn to_int(&self) -> i32 {
+        *self as i32
+    }
+}
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl HSIMode {
     pub fn __str__(&self) -> String {
@@ -37,8 +51,9 @@ impl HSIMode {
         format!("HSIMode::{}", self)
     }
 
-    pub fn to_int(&self) -> i32 {
-        *self as i32
+    #[pyo3(name = "to_int")]
+    fn py_to_int(&self) -> i32 {
+        self.to_int()
     }
 
     #[staticmethod]
@@ -57,7 +72,7 @@ impl HSIMode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, AerosimMessage, JsonSchema)]
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 pub struct PrimaryFlightDisplayData {
     pub airspeed_kts: f64,                    // JSBSim "velocities/vc-kts"
     pub true_airspeed_kts: f64,               // JSBSim "velocities/vtrue-kts"
@@ -94,11 +109,18 @@ impl Default for PrimaryFlightDisplayData {
     }
 }
 
+impl PrimaryFlightDisplayData {
+    pub fn new() -> Self {
+        PrimaryFlightDisplayData::default()
+    }
+}
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl PrimaryFlightDisplayData {
     #[new]
-    pub fn new() -> Self {
-        PrimaryFlightDisplayData::default()
+    fn py_new() -> Self {
+        Self::new()
     }
 
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

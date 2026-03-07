@@ -1,16 +1,19 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::adsb::types::EmergencyState;
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AircraftStatus {
     pub emergency_state: EmergencyState,
     pub squawk: u32,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl AircraftStatus {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

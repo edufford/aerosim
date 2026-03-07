@@ -1,8 +1,10 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AircraftIdentification {
     /// Type Code
@@ -13,6 +15,7 @@ pub struct AircraftIdentification {
     pub cn: String,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl AircraftIdentification {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {

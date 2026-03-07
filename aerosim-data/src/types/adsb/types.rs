@@ -1,4 +1,3 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
@@ -22,7 +21,10 @@ use super::{
     target_state_and_status_information::TargetStateAndStatusInformation,
 };
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ADSB {
     pub capability: Capability,
@@ -31,6 +33,8 @@ pub struct ADSB {
     pub pi: ICAOAddress,
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
 impl ADSB {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
@@ -46,7 +50,7 @@ impl ADSB {
     }
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub enum ME {
     AircraftIdentification(AircraftIdentification),
@@ -65,6 +69,8 @@ pub enum ME {
     AircraftOperationStatusReserved(u8, [u8; 5]),
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
 impl ME {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         match self {
@@ -90,7 +96,7 @@ impl ME {
     }
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ADSBMessageType {
     ShortAirAirSurveillance(ShortAirAirSurveillance),
@@ -106,6 +112,8 @@ pub enum ADSBMessageType {
     GNSSPositionData(GNSSPositionData),
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
 impl ADSBMessageType {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         match self {
@@ -130,7 +138,7 @@ impl ADSBMessageType {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 #[derive(
     Copy, Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq, Eq, JsonSchema,
 )]
@@ -160,7 +168,7 @@ impl From<u8> for EmergencyState {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 #[derive(
     Copy, Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq, Eq, JsonSchema,
 )]
@@ -181,7 +189,7 @@ impl From<u8> for ADSBVersion {
     }
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CapabilityClassAirborne {
     pub reserved0: u8,
@@ -193,6 +201,8 @@ pub struct CapabilityClassAirborne {
     pub tc: u8,
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
 impl CapabilityClassAirborne {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
@@ -211,7 +221,7 @@ impl CapabilityClassAirborne {
     }
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CapabilityClassSurface {
     /// 0, 0 in current version, reserved as id for later versions
@@ -230,6 +240,8 @@ pub struct CapabilityClassSurface {
     pub nic_supplement_c: u8,
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
 impl CapabilityClassSurface {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
@@ -248,7 +260,7 @@ impl CapabilityClassSurface {
     }
 }
 
-#[pyclass(get_all)]
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct OperationalMode {
     /// (0, 0) in Version 2, reserved for other values
@@ -260,6 +272,8 @@ pub struct OperationalMode {
     pub system_design_assurance: u8,
 }
 
+#[cfg(feature = "python")]
+#[pymethods]
 impl OperationalMode {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
@@ -277,7 +291,7 @@ impl OperationalMode {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, EnumString, Display, PartialEq, Eq)]
 pub enum AirborneVelocitySubType {
     Reserved,
@@ -285,7 +299,7 @@ pub enum AirborneVelocitySubType {
     AirspeedDecoding,
 }
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub struct ICAOAddress(pub [u8; 3]);
 
@@ -300,7 +314,7 @@ impl ICAOAddress {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum FlightStatus {
     NoAlertNoSPIAirborne,
@@ -328,7 +342,7 @@ impl From<u8> for FlightStatus {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Capability {
     Uncertain = 0,
@@ -353,7 +367,7 @@ impl From<u8> for Capability {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, Deserialize, JsonSchema)]
 #[allow(non_camel_case_types)]
 pub enum ControlFieldType {
@@ -382,7 +396,7 @@ impl From<u8> for ControlFieldType {
     }
 }
 
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, EnumString, PartialEq, Eq, JsonSchema)]
 pub enum SurveillanceStatus {
     NoCondition,
@@ -391,6 +405,18 @@ pub enum SurveillanceStatus {
     SPICondition,
 }
 
+impl SurveillanceStatus {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::NoCondition => "No condition".to_string(),
+            Self::PermanentAlert => "Permanent alert".to_string(),
+            Self::TemporaryAlert => "Temporary alert".to_string(),
+            Self::SPICondition => "SPI condition".to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "python")]
 #[pymethods]
 impl SurveillanceStatus {
     pub fn __str__(&self) -> String {
@@ -399,15 +425,6 @@ impl SurveillanceStatus {
 
     pub fn __repr__(&self) -> String {
         self.to_string()
-    }
-
-    pub fn to_string(&self) -> String {
-        match self {
-            Self::NoCondition => "No condition".to_string(),
-            Self::PermanentAlert => "Permanent alert".to_string(),
-            Self::TemporaryAlert => "Temporary alert".to_string(),
-            Self::SPICondition => "SPI condition".to_string(),
-        }
     }
 }
 

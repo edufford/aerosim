@@ -1,11 +1,15 @@
-use pyo3::prelude::*;
-
 use bincode;
 use serde::{Deserialize, Serialize};
 
-use crate::middleware::{Metadata, PySerializer, Serializer, SerializerEnum};
+use crate::middleware::{Serializer, SerializerEnum};
 
-#[pyclass]
+#[cfg(feature = "python")]
+use {
+    crate::middleware::{Metadata, PySerializer},
+    pyo3::prelude::*,
+};
+
+#[cfg_attr(feature = "python", pyclass)]
 pub struct BincodeSerializer;
 
 impl Serializer for BincodeSerializer {
@@ -22,8 +26,10 @@ impl Serializer for BincodeSerializer {
     }
 }
 
+#[cfg(feature = "python")]
 impl PySerializer for BincodeSerializer {}
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl BincodeSerializer {
     #[new]

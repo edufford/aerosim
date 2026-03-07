@@ -2,21 +2,23 @@ use std::{error::Error, sync::Arc};
 
 use async_trait::async_trait;
 use log::{error, info};
-use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use crate::{
-    middleware::{
-        CallbackClosureRaw, Metadata, Middleware, MiddlewareRaw, PyMiddleware, PySerializer,
-        Serializer, SerializerEnum,
-    },
-    types::TimeStamp,
+use crate::middleware::{
+    CallbackClosureRaw, Middleware, MiddlewareRaw, Serializer, SerializerEnum,
 };
 
-#[pyclass]
+#[cfg(feature = "python")]
+use {
+    crate::middleware::{Metadata, PyMiddleware, PySerializer},
+    crate::types::TimeStamp,
+    pyo3::prelude::*,
+};
+
+#[cfg_attr(feature = "python", pyclass)]
 pub struct ZenohSerializer;
 
 impl Serializer for ZenohSerializer {
@@ -33,7 +35,7 @@ impl Serializer for ZenohSerializer {
     }
 }
 
-#[pyclass]
+#[cfg_attr(feature = "python", pyclass)]
 pub struct ZenohMiddleware {
     session: tokio::sync::OnceCell<zenoh::Session>,
     runtime: Arc<tokio::runtime::Runtime>,
@@ -102,7 +104,9 @@ impl MiddlewareRaw for ZenohMiddleware {
             .put(topic, payload)
             .congestion_control(zenoh::qos::CongestionControl::Block)
             .await
-            .expect("Failed to publish message");
+            .map_err(|e| -> Box<dyn Error> {
+                format!("Failed to publish topic {} with error: {}", topic, e).into()
+            })?;
 
         Ok(())
     }
@@ -176,8 +180,10 @@ impl Middleware for ZenohMiddleware {
     }
 }
 
+#[cfg(feature = "python")]
 impl PyMiddleware for ZenohMiddleware {}
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl ZenohMiddleware {
     #[new]
@@ -311,8 +317,10 @@ impl ZenohMiddleware {
     }
 }
 
+#[cfg(feature = "python")]
 impl PySerializer for ZenohSerializer {}
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl ZenohSerializer {
     #[new]

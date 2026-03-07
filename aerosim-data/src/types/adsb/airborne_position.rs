@@ -1,10 +1,12 @@
-use pyo3::{prelude::*, types::PyDict};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::types::SurveillanceStatus;
 
-#[pyclass(get_all)]
+#[cfg(feature = "python")]
+use pyo3::{prelude::*, types::PyDict};
+
+#[cfg_attr(feature = "python", pyclass(get_all))]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct AirbornePosition {
     /// Type Code
@@ -27,6 +29,7 @@ pub struct AirbornePosition {
     pub lon_cpr: u32,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl AirbornePosition {
     pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
