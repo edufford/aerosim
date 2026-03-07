@@ -58,7 +58,8 @@ impl VehicleState {
 #[pymethods]
 impl VehicleType {
     #[staticmethod]
-    pub fn from_str(s: &str) -> PyResult<Self> {
+    #[pyo3(name = "from_str")]
+    pub fn py_from_str(s: &str) -> PyResult<Self> {
         s.parse()
             .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid VehicleType"))
     }
@@ -72,7 +73,8 @@ impl VehicleType {
     }
 
     #[staticmethod]
-    pub fn to_dict(py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new(py);
         for variant in [
             VehicleType::Ground,
@@ -100,15 +102,16 @@ impl VehicleState {
         Self::new(state, velocity, angular_velocity, acceleration, angular_acceleration)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("state", self.state.to_dict(py)?)?;
-        dict.set_item("velocity", self.velocity.to_dict(py)?)?;
-        dict.set_item("angular_velocity", self.angular_velocity.to_dict(py)?)?;
-        dict.set_item("acceleration", self.acceleration.to_dict(py)?)?;
+        dict.set_item("state", self.state.py_to_dict(py)?)?;
+        dict.set_item("velocity", self.velocity.py_to_dict(py)?)?;
+        dict.set_item("angular_velocity", self.angular_velocity.py_to_dict(py)?)?;
+        dict.set_item("acceleration", self.acceleration.py_to_dict(py)?)?;
         dict.set_item(
             "angular_acceleration",
-            self.angular_acceleration.to_dict(py)?,
+            self.angular_acceleration.py_to_dict(py)?,
         )?;
         Ok(dict.into())
     }

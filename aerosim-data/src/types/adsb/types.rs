@@ -304,32 +304,34 @@ impl From<u8> for SurveillanceStatus {
 #[cfg(feature = "python")]
 #[pymethods]
 impl ADSB {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("capability", self.capability);
         let _ = dict.set_item("icao", self.icao.to_hex());
-        let _ = dict.set_item("message_extended_quitter", self.me.to_dict(py)?);
+        let _ = dict.set_item("message_extended_quitter", self.me.py_to_dict(py)?);
         let _ = dict.set_item("parity", self.pi.to_hex());
         Ok(dict.into())
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }
 
 #[cfg(feature = "python")]
 #[pymethods]
 impl ME {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         match self {
-            Self::AircraftIdentification(message_type) => Ok(message_type.to_dict(py)?),
-            Self::AirbornePosition(message_type) => Ok(message_type.to_dict(py)?),
-            Self::SurfacePosition(message_type) => Ok(message_type.to_dict(py)?),
-            Self::AirborneVelocity(message_type) => Ok(message_type.to_dict(py)?),
-            Self::AircraftOperationStatusAirborne(message_type) => Ok(message_type.to_dict(py)?),
-            Self::AircraftOperationStatusSurface(message_type) => Ok(message_type.to_dict(py)?),
-            Self::TargetStateAndStatusInformation(message_type) => Ok(message_type.to_dict(py)?),
+            Self::AircraftIdentification(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::AirbornePosition(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::SurfacePosition(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::AirborneVelocity(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::AircraftOperationStatusAirborne(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::AircraftOperationStatusSurface(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::TargetStateAndStatusInformation(message_type) => Ok(message_type.py_to_dict(py)?),
             Self::NoPosition(_) => Ok(py.None()),
             Self::Reserved0(_) => Ok(py.None()),
             Self::Reserved1(_) => Ok(py.None()),
@@ -341,40 +343,42 @@ impl ME {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }
 
 #[cfg(feature = "python")]
 #[pymethods]
 impl ADSBMessageType {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         match self {
-            Self::ShortAirAirSurveillance(message_type) => Ok(message_type.to_dict(py)?),
-            Self::SurveillanceAltitudeReply(message_type) => Ok(message_type.to_dict(py)?),
-            Self::SurveillanceIdentityReply(message_type) => Ok(message_type.to_dict(py)?),
-            Self::AllCallReply(message_type) => Ok(message_type.to_dict(py)?),
-            Self::LongAirAir(message_type) => Ok(message_type.to_dict(py)?),
-            Self::ADSB(message_type) => Ok(message_type.to_dict(py)?),
-            Self::TisB(message_type) => Ok(message_type.to_dict(py)?),
+            Self::ShortAirAirSurveillance(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::SurveillanceAltitudeReply(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::SurveillanceIdentityReply(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::AllCallReply(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::LongAirAir(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::ADSB(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::TisB(message_type) => Ok(message_type.py_to_dict(py)?),
             Self::ExtendedSquitterMilitaryApplication(message_type) => {
-                Ok(message_type.to_dict(py)?)
+                Ok(message_type.py_to_dict(py)?)
             }
-            Self::CommBAltitudeReply(message_type) => Ok(message_type.to_dict(py)?),
-            Self::CommBIdentityReply(message_type) => Ok(message_type.to_dict(py)?),
-            Self::GNSSPositionData(message_type) => Ok(message_type.to_dict(py)?),
+            Self::CommBAltitudeReply(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::CommBIdentityReply(message_type) => Ok(message_type.py_to_dict(py)?),
+            Self::GNSSPositionData(message_type) => Ok(message_type.py_to_dict(py)?),
         }
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }
 
 #[cfg(feature = "python")]
 #[pymethods]
 impl CapabilityClassAirborne {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("reserved0", self.reserved0);
         let _ = dict.set_item("acas", self.acas);
@@ -387,14 +391,15 @@ impl CapabilityClassAirborne {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }
 
 #[cfg(feature = "python")]
 #[pymethods]
 impl CapabilityClassSurface {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("reserved0", self.reserved0);
         let _ = dict.set_item("poe", self.poe);
@@ -407,14 +412,15 @@ impl CapabilityClassSurface {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }
 
 #[cfg(feature = "python")]
 #[pymethods]
 impl OperationalMode {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("reserved", self.reserved);
         let _ = dict.set_item("tcas_ra_active", self.tcas_ra_active);
@@ -426,7 +432,7 @@ impl OperationalMode {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }
 

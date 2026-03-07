@@ -312,7 +312,8 @@ impl IMU {
 #[pymethods]
 impl SensorType {
     #[staticmethod]
-    pub fn from_str(s: &str) -> PyResult<Self> {
+    #[pyo3(name = "from_str")]
+    pub fn py_from_str(s: &str) -> PyResult<Self> {
         s.parse()
             .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid SensorType"))
     }
@@ -326,7 +327,8 @@ impl SensorType {
     }
 
     #[staticmethod]
-    pub fn to_dict(py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new(py);
         for variant in [
             SensorType::Camera,
@@ -346,7 +348,8 @@ impl SensorType {
 #[pymethods]
 impl ImageEncoding {
     #[staticmethod]
-    pub fn from_str(s: &str) -> PyResult<Self> {
+    #[pyo3(name = "from_str")]
+    pub fn py_from_str(s: &str) -> PyResult<Self> {
         s.parse()
             .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid ImageEncoding"))
     }
@@ -360,7 +363,8 @@ impl ImageEncoding {
     }
 
     #[staticmethod]
-    pub fn to_dict(py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new(py);
         for variant in [
             ImageEncoding::RGB8,
@@ -463,9 +467,10 @@ impl Image {
         self.compress().map_err(PyRuntimeError::new_err)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("camera_info", self.camera_info.to_dict(py)?)?;
+        dict.set_item("camera_info", self.camera_info.py_to_dict(py)?)?;
         dict.set_item("height", self.height)?;
         dict.set_item("width", self.width)?;
         dict.set_item(
@@ -521,7 +526,8 @@ impl CompressedImage {
         self.decompress().map_err(PyRuntimeError::new_err)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item(
             "format",
@@ -556,7 +562,8 @@ impl CameraInfo {
         Self::new(width, height, distortion_model, d, k, r, p)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("width", self.width)?;
         dict.set_item("height", self.height)?;
@@ -578,9 +585,10 @@ impl ADSB {
         Self::new(message)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        let _ = dict.set_item("message", self.message.to_dict(py)?);
+        let _ = dict.set_item("message", self.message.py_to_dict(py)?);
         Ok(dict.into())
     }
 }
@@ -600,12 +608,13 @@ impl GNSS {
         Self::new(latitude, longitude, altitude, velocity, heading)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("latitude", self.latitude)?;
         dict.set_item("longitude", self.longitude)?;
         dict.set_item("altitude", self.altitude)?;
-        dict.set_item("velocity", self.velocity.to_dict(py)?)?;
+        dict.set_item("velocity", self.velocity.py_to_dict(py)?)?;
         dict.set_item("heading", self.heading)?;
         Ok(dict.into())
     }
@@ -620,11 +629,12 @@ impl IMU {
         Self::new(acceleration, gyroscope, magnetic_field)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("acceleration", self.acceleration.to_dict(py)?)?;
-        dict.set_item("gyroscope", self.gyroscope.to_dict(py)?)?;
-        dict.set_item("magnetic_field", self.magnetic_field.to_dict(py)?)?;
+        dict.set_item("acceleration", self.acceleration.py_to_dict(py)?)?;
+        dict.set_item("gyroscope", self.gyroscope.py_to_dict(py)?)?;
+        dict.set_item("magnetic_field", self.magnetic_field.py_to_dict(py)?)?;
         Ok(dict.into())
     }
 }

@@ -254,7 +254,8 @@ impl AircraftEffectorCommand {
 #[pymethods]
 impl AutopilotFlightPlanCommand {
     #[staticmethod]
-    pub fn from_str(s: &str) -> PyResult<Self> {
+    #[pyo3(name = "from_str")]
+    pub fn py_from_str(s: &str) -> PyResult<Self> {
         s.parse().map_err(|_| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid AutopilotFlightPlanCommand")
         })
@@ -269,7 +270,8 @@ impl AutopilotFlightPlanCommand {
     }
 
     #[staticmethod]
-    pub fn to_dict(py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new(py);
         for variant in [
             AutopilotFlightPlanCommand::Stop,
@@ -338,7 +340,8 @@ impl AutopilotCommand {
         )
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("flight_plan", &self.flight_plan)?;
         dict.set_item("flight_plan_command", &self.flight_plan_command.to_int())?;
@@ -403,7 +406,8 @@ impl FlightControlCommand {
         )
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("power_cmd", PyList::new(py, &self.power_cmd)?.as_ref())?;
         dict.set_item("roll_cmd", self.roll_cmd)?;
@@ -466,7 +470,8 @@ impl AircraftEffectorCommand {
         )
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item(
             "throttle_cmd",

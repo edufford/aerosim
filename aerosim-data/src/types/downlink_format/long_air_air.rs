@@ -24,7 +24,8 @@ impl LongAirAir {
         Ok(dict.into())
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 }

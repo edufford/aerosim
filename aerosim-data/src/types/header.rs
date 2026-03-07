@@ -80,10 +80,11 @@ impl Header {
         self.is_sim_time_valid()
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("timestamp_sim", self.timestamp_sim.to_dict(py)?)?;
-        dict.set_item("timestamp_platform", self.timestamp_platform.to_dict(py)?)?;
+        dict.set_item("timestamp_sim", self.timestamp_sim.py_to_dict(py)?)?;
+        dict.set_item("timestamp_platform", self.timestamp_platform.py_to_dict(py)?)?;
         dict.set_item("frame_id", self.frame_id.clone())?;
         Ok(dict.into())
     }

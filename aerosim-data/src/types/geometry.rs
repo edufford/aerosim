@@ -98,7 +98,8 @@ impl Vector3 {
         Self::new(x, y, z)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("x", self.x)?;
         dict.set_item("y", self.y)?;
@@ -121,7 +122,8 @@ impl Quaternion {
         Self::new(w, x, y, z)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("w", self.w)?;
         dict.set_item("x", self.x)?;
@@ -144,10 +146,11 @@ impl Pose {
         Self::new(position, orientation)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("position", self.position.to_dict(py)?)?;
-        dict.set_item("orientation", self.orientation.to_dict(py)?)?;
+        dict.set_item("position", self.position.py_to_dict(py)?)?;
+        dict.set_item("orientation", self.orientation.py_to_dict(py)?)?;
         Ok(dict.into())
     }
 

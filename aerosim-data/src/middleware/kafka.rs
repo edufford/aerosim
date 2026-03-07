@@ -306,13 +306,13 @@ impl PyMiddleware for KafkaMiddleware {}
 #[pymethods]
 impl KafkaMiddleware {
     #[new]
-    fn pynew(_py: Python) -> PyResult<Self> {
+    fn py_new(_py: Python) -> PyResult<Self> {
         Ok(Self::new())
     }
 
     #[pyo3(name = "publish")]
     #[pyo3(signature = (topic, message, timestamp_sim=None))]
-    fn pypublish(
+    fn py_publish(
         &self,
         py: Python,
         topic: &str,
@@ -323,7 +323,7 @@ impl KafkaMiddleware {
     }
 
     #[pyo3(name = "subscribe")]
-    fn pysubscribe(
+    fn py_subscribe(
         &self,
         py: Python,
         message_type: PyObject,
@@ -337,7 +337,7 @@ impl KafkaMiddleware {
     }
 
     #[pyo3(name = "subscribe_all")]
-    fn pysubscribe_all(
+    fn py_subscribe_all(
         &self,
         py: Python,
         message_type: PyObject,
@@ -351,7 +351,7 @@ impl KafkaMiddleware {
     }
 
     #[pyo3(name = "publish_raw")]
-    fn pypublish_raw(
+    fn py_publish_raw(
         &self,
         py: Python,
         message_type: &str,
@@ -362,7 +362,7 @@ impl KafkaMiddleware {
     }
 
     #[pyo3(name = "subscribe_raw")]
-    fn pysubscribe_raw(
+    fn py_subscribe_raw(
         &self,
         py: Python<'_>,
         message_type: &str,
@@ -376,7 +376,7 @@ impl KafkaMiddleware {
     }
 
     #[pyo3(name = "subscribe_all_raw")]
-    fn pysubscribe_all_raw(
+    fn py_subscribe_all_raw(
         &self,
         py: Python,
         topics: Vec<(String, String)>,
@@ -396,12 +396,12 @@ impl PySerializer for KafkaSerializer {}
 #[pymethods]
 impl KafkaSerializer {
     #[new]
-    fn pynew(_py: Python) -> PyResult<Self> {
+    fn py_new(_py: Python) -> PyResult<Self> {
         Ok(Self {})
     }
 
     #[pyo3(name = "serialize_message")]
-    fn pyserialize_message(
+    fn py_serialize_message(
         &self,
         py: Python<'_>,
         metadata: Metadata,
@@ -412,7 +412,7 @@ impl KafkaSerializer {
     }
 
     #[pyo3(name = "deserialize_message")]
-    fn pydeserialize_message(
+    fn py_deserialize_message(
         &self,
         py: Python<'_>,
         message_type: PyObject,
@@ -423,13 +423,13 @@ impl KafkaSerializer {
     }
 
     #[pyo3(name = "deserialize_metadata")]
-    fn pydeserialize_metadata(&self, py: Python<'_>, payload: &[u8]) -> Option<Metadata> {
+    fn py_deserialize_metadata(&self, py: Python<'_>, payload: &[u8]) -> Option<Metadata> {
         let serializer = SerializerEnum::from(KafkaSerializer {});
         self.pydeserialize_metadata_impl(py, &serializer, payload)
     }
 
     #[pyo3(name = "deserialize_data")]
-    fn pydeserialize_data(
+    fn py_deserialize_data(
         &self,
         py: Python<'_>,
         message_type: PyObject,
@@ -440,7 +440,7 @@ impl KafkaSerializer {
     }
 
     #[pyo3(name = "from_json")]
-    fn pyserialize_from_json(
+    fn py_serialize_from_json(
         &self,
         py: Python<'_>,
         type_name: &str,
@@ -452,7 +452,7 @@ impl KafkaSerializer {
     }
 
     #[pyo3(name = "to_json")]
-    fn pydeserialize_to_json(
+    fn py_deserialize_to_json(
         &self,
         py: Python<'_>,
         type_name: &str,

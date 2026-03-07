@@ -126,9 +126,10 @@ impl ActorState {
         Self::new(pose)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("pose", self.pose.to_dict(py)?)?;
+        dict.set_item("pose", self.pose.py_to_dict(py)?)?;
         Ok(dict.into())
     }
 
@@ -150,9 +151,10 @@ impl ActorModel {
         Self::new(physical_properties, asset_link)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("physical_properties", self.physical_properties.to_dict(py)?)?;
+        dict.set_item("physical_properties", self.physical_properties.py_to_dict(py)?)?;
         dict.set_item("asset_link", self.asset_link.clone())?;
         Ok(dict.into())
     }
@@ -166,11 +168,12 @@ impl PhysicalProperties {
         Self::new(mass, inertia_tensor, moment_of_inertia)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("mass", self.mass)?;
-        dict.set_item("inertia_tensor", self.inertia_tensor.to_dict(py)?)?;
-        dict.set_item("moment_of_inertia", self.moment_of_inertia.to_dict(py)?)?;
+        dict.set_item("inertia_tensor", self.inertia_tensor.py_to_dict(py)?)?;
+        dict.set_item("moment_of_inertia", self.moment_of_inertia.py_to_dict(py)?)?;
         Ok(dict.into())
     }
 }

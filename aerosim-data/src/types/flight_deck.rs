@@ -103,7 +103,8 @@ impl HSIMode {
     }
 
     #[staticmethod]
-    pub fn to_dict(py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new(py);
         for variant in [HSIMode::GPS, HSIMode::VOR1, HSIMode::VOR2] {
             dict.set_item(variant.to_string(), variant.to_int())?;
@@ -125,7 +126,8 @@ impl PrimaryFlightDisplayData {
         Self::new()
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("airspeed_kts", self.airspeed_kts)?;
         dict.set_item("true_airspeed_kts", self.true_airspeed_kts)?;

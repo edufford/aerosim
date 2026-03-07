@@ -36,9 +36,10 @@ impl EffectorState {
         Self::new(pose)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("pose", self.pose.to_dict(py)?)?;
+        dict.set_item("pose", self.pose.py_to_dict(py)?)?;
         Ok(dict.into())
     }
 

@@ -39,7 +39,8 @@ pub struct CommDExtendedLengthMessage {
 #[cfg(feature = "python")]
 #[pymethods]
 impl CommBAltitudeReply {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 
@@ -47,7 +48,7 @@ impl CommBAltitudeReply {
         let dict = PyDict::new(py);
         let _ = dict.set_item("icao", self.icao.to_hex());
         let _ = dict.set_item("altitude", self.altitude);
-        let _ = dict.set_item("bds", self.bds.to_dict(py)?);
+        let _ = dict.set_item("bds", self.bds.py_to_dict(py)?);
         Ok(dict.into())
     }
 }
@@ -55,7 +56,8 @@ impl CommBAltitudeReply {
 #[cfg(feature = "python")]
 #[pymethods]
 impl CommBIdentityReply {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 
@@ -63,7 +65,7 @@ impl CommBIdentityReply {
         let dict = PyDict::new(py);
         let _ = dict.set_item("icao", self.icao.to_hex());
         let _ = dict.set_item("squawk", self.squawk);
-        let _ = dict.set_item("bds", self.bds.to_dict(py)?);
+        let _ = dict.set_item("bds", self.bds.py_to_dict(py)?);
         Ok(dict.into())
     }
 }
@@ -71,7 +73,8 @@ impl CommBIdentityReply {
 #[cfg(feature = "python")]
 #[pymethods]
 impl CommDExtendedLengthMessage {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 
@@ -85,7 +88,8 @@ impl CommDExtendedLengthMessage {
 #[cfg(feature = "python")]
 #[pymethods]
 impl ExtendedSquitterMilitaryApplication {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 

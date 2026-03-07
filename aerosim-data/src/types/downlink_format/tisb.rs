@@ -22,11 +22,12 @@ impl TisB {
         let dict = PyDict::new(py);
         let _ = dict.set_item("address_announced", self.aa.to_hex());
         let _ = dict.set_item("control_type", self.control_type);
-        let _ = dict.set_item("message_extended_squitter", self.me.to_dict(py)?);
+        let _ = dict.set_item("message_extended_squitter", self.me.py_to_dict(py)?);
         Ok(dict.into())
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 }

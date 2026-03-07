@@ -144,7 +144,8 @@ impl TimeStamp {
         Self::now()
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("sec", self.sec)?;
         dict.set_item("nanosec", self.nanosec)?;

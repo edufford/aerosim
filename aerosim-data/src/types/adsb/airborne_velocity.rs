@@ -34,7 +34,8 @@ pub struct AirborneVelocity {
 #[cfg(feature = "python")]
 #[pymethods]
 impl AirborneVelocity {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("st", self.st)?;
         let _ = dict.set_item("nac_v", self.nac_v)?;
@@ -55,6 +56,6 @@ impl AirborneVelocity {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }

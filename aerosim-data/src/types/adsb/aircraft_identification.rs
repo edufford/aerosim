@@ -20,7 +20,8 @@ pub struct AircraftIdentification {
 #[cfg(feature = "python")]
 #[pymethods]
 impl AircraftIdentification {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("tc", self.tc)?;
         let _ = dict.set_item("ca", self.ca)?;
@@ -29,6 +30,6 @@ impl AircraftIdentification {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }

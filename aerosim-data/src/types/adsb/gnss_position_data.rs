@@ -57,7 +57,8 @@ impl GNSSPositionData {
         Self::new(latitude, longitude, altitude, velocity, heading, ground_velocity, acceleration)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         let _ = dict.set_item("latitude", self.latitude)?;
         let _ = dict.set_item("longitude", self.longitude)?;
@@ -70,6 +71,6 @@ impl GNSSPositionData {
     }
 
     pub fn __dict__(&self, py: Python) -> PyResult<PyObject> {
-        self.to_dict(py)
+        self.py_to_dict(py)
     }
 }

@@ -35,12 +35,12 @@ impl PySerializer for BincodeSerializer {}
 #[pymethods]
 impl BincodeSerializer {
     #[new]
-    fn pynew(_py: Python) -> PyResult<Self> {
+    fn py_new(_py: Python) -> PyResult<Self> {
         Ok(Self {})
     }
 
     #[pyo3(name = "serialize_message")]
-    fn pyserialize_message(
+    fn py_serialize_message(
         &self,
         py: Python<'_>,
         metadata: Metadata,
@@ -51,7 +51,7 @@ impl BincodeSerializer {
     }
 
     #[pyo3(name = "deserialize_message")]
-    fn pydeserialize_message(
+    fn py_deserialize_message(
         &self,
         py: Python<'_>,
         message_type: PyObject,
@@ -62,13 +62,13 @@ impl BincodeSerializer {
     }
 
     #[pyo3(name = "deserialize_metadata")]
-    fn pydeserialize_metadata(&self, py: Python<'_>, payload: &[u8]) -> Option<Metadata> {
+    fn py_deserialize_metadata(&self, py: Python<'_>, payload: &[u8]) -> Option<Metadata> {
         let serializer = SerializerEnum::from(BincodeSerializer {});
         self.pydeserialize_metadata_impl(py, &serializer, payload)
     }
 
     #[pyo3(name = "deserialize_data")]
-    fn pydeserialize_data(
+    fn py_deserialize_data(
         &self,
         py: Python<'_>,
         message_type: PyObject,
@@ -79,7 +79,7 @@ impl BincodeSerializer {
     }
 
     #[pyo3(name = "from_json")]
-    fn pyserialize_from_json(
+    fn py_serialize_from_json(
         &self,
         py: Python<'_>,
         type_name: &str,
@@ -91,7 +91,7 @@ impl BincodeSerializer {
     }
 
     #[pyo3(name = "to_json")]
-    fn pydeserialize_to_json(
+    fn py_deserialize_to_json(
         &self,
         py: Python<'_>,
         type_name: &str,

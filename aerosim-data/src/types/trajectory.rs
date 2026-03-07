@@ -109,14 +109,15 @@ impl TrajectoryVisualization {
         Self::new(settings, user_defined_waypoints, future_trajectory)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
-        dict.set_item("settings", self.settings.to_dict(py)?)?;
+        dict.set_item("settings", self.settings.py_to_dict(py)?)?;
         dict.set_item(
             "user_defined_waypoints",
-            self.user_defined_waypoints.to_dict(py)?,
+            self.user_defined_waypoints.py_to_dict(py)?,
         )?;
-        dict.set_item("future_trajectory", self.future_trajectory.to_dict(py)?)?;
+        dict.set_item("future_trajectory", self.future_trajectory.py_to_dict(py)?)?;
         Ok(dict.into())
     }
 
@@ -150,7 +151,8 @@ impl TrajectoryVisualizationSettings {
         )
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("display_future_trajectory", self.display_future_trajectory)?;
         dict.set_item("display_past_trajectory", self.display_past_trajectory)?;
@@ -180,7 +182,8 @@ impl TrajectoryWaypoints {
         Self::new(waypoints)
     }
 
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("waypoints", self.waypoints.clone())?;
         Ok(dict.into())

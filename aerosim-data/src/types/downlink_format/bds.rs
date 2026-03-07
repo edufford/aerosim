@@ -36,7 +36,8 @@ pub struct DataLinkCapability {
 #[cfg(feature = "python")]
 #[pymethods]
 impl BDS {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 
@@ -52,7 +53,7 @@ impl BDS {
             }
             Self::DataLinkCapability(dlc) => {
                 let _ = dict.set_item("type", "datalink_capability");
-                let _ = dict.set_item("datalink_capability", dlc.to_dict(py)?);
+                let _ = dict.set_item("datalink_capability", dlc.py_to_dict(py)?);
             }
             Self::Unknown() => {
                 let _ = dict.set_item("type", "unknown");
@@ -65,7 +66,8 @@ impl BDS {
 #[cfg(feature = "python")]
 #[pymethods]
 impl DataLinkCapability {
-    pub fn to_dict(&self, py: Python) -> PyResult<PyObject> {
+    #[pyo3(name = "to_dict")]
+    pub fn py_to_dict(&self, py: Python) -> PyResult<PyObject> {
         self.__dict__(py)
     }
 
