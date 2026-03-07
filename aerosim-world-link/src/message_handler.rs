@@ -120,9 +120,10 @@ pub struct MessageHandler {
     tx_img: Arc<tokio::sync::mpsc::Sender<(String, Image)>>,
     rx_img: Option<tokio::sync::mpsc::Receiver<(String, Image)>>,
 
-    // Channel for requesting new topic subscriptions from the async runtime
-    tx_sub: Arc<tokio::sync::mpsc::Sender<String>>,
-    rx_sub: Option<tokio::sync::mpsc::Receiver<String>>,
+    // Channel for requesting new topic subscriptions from the async runtime.
+    // Sends (topic, oneshot reply) so the caller blocks until the subscription is processed.
+    tx_sub: Arc<tokio::sync::mpsc::Sender<(String, tokio::sync::oneshot::Sender<bool>)>>,
+    rx_sub: Option<tokio::sync::mpsc::Receiver<(String, tokio::sync::oneshot::Sender<bool>)>>,
 }
 
 impl MessageHandler {
@@ -131,7 +132,10 @@ impl MessageHandler {
 
         let (tx_stop, rx_stop) = tokio::sync::mpsc::channel::<bool>(1);
         let (tx_img, rx_img) = tokio::sync::mpsc::channel::<(String, Image)>(1);
-        let (tx_sub, rx_sub) = tokio::sync::mpsc::channel::<String>(SUBSCRIBE_CHANNEL_BUFFER_SIZE);
+        let (tx_sub, rx_sub) = tokio::sync::mpsc::channel::<(
+            String,
+            tokio::sync::oneshot::Sender<bool>,
+        )>(SUBSCRIBE_CHANNEL_BUFFER_SIZE);
 
         let transport = match middleware_type {
             "kafka" => MiddlewareRegistry::new()
@@ -228,11 +232,11 @@ impl MessageHandler {
 
     /// Publish a JSON payload as a `JsonData` message to the given topic.
     /// The payload is always sent as the generic `JsonData` type regardless of content.
-    pub fn publish_to_topic(&self, topic: &str, payload: &str) {
+    pub fn publish_to_topic(&self, topic: &str, payload: &str) -> bool {
         let payload_json = serde_json::from_str::<serde_json::Value>(payload)
             .expect("Error serializing payload string to JSON.");
         let payload_jsondata = JsonData::new(payload_json);
-        futures::executor::block_on(self.transport.publish(topic, &payload_jsondata, None)).ok();
+        futures::executor::block_on(self.transport.publish(topic, &payload_jsondata, None)).is_ok()
     }
 
     /// Publish a JSON payload as a specific registered message type to the given topic.
@@ -296,23 +300,39 @@ impl MessageHandler {
             return false;
         };
 
-        futures::executor::block_on(
-            self.transport.publish_raw(message_type, topic, &serialized),
-        )
-        .ok();
+        futures::executor::block_on(self.transport.publish_raw(message_type, topic, &serialized))
+            .ok();
         true
     }
 
-    pub fn publish_image_to_topic(&self, topic: &str, image: Image) {
+    pub fn publish_image_to_topic_async(&self, topic: &str, image: Image) {
         let _ = self.tx_img.try_send((topic.to_string(), image));
     }
 
-    pub fn subscribe_to_topic(&self, topic: &str) {
+    pub fn subscribe_to_topic(&self, topic: &str) -> bool {
         info!(
             "[aerosim.renderer.message_handler] Requesting subscription to topic: {}",
             topic
         );
-        let _ = self.tx_sub.try_send(topic.to_string());
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel::<bool>();
+        if self.tx_sub.try_send((topic.to_string(), reply_tx)).is_err() {
+            warn!(
+                "[aerosim.renderer.message_handler] Failed to send subscription request for topic: {}",
+                topic
+            );
+            return false;
+        }
+        // Block until the async runtime processes the subscription
+        match reply_rx.blocking_recv() {
+            Ok(return_status) => return_status,
+            Err(_) => {
+                warn!(
+                    "[aerosim.renderer.message_handler] Subscription reply channel dropped for topic: {}",
+                    topic
+                );
+                false
+            }
+        }
     }
 
     pub fn get_payload_queue_size(&self) -> u32 {
@@ -362,7 +382,7 @@ async fn message_handler_main(
     renderer_id: String,
     mut rx_img: tokio::sync::mpsc::Receiver<(String, Image)>,
     mut rx_stop: tokio::sync::mpsc::Receiver<bool>,
-    mut rx_sub: tokio::sync::mpsc::Receiver<String>,
+    mut rx_sub: tokio::sync::mpsc::Receiver<(String, tokio::sync::oneshot::Sender<bool>)>,
 ) {
     {
         match transport
@@ -427,7 +447,7 @@ async fn message_handler_main(
     // the new image will be discarded (i.e., image loss is possible).
     loop {
         // Process any pending subscription requests
-        while let Ok(topic) = rx_sub.try_recv() {
+        while let Ok((topic, reply_tx)) = rx_sub.try_recv() {
             info!(
                 "[aerosim.world.link] Creating subscription for topic: {}",
                 topic
@@ -445,16 +465,23 @@ async fn message_handler_main(
                     })
                 })
                 .await;
-            match subscribe_result {
-                Ok(()) => info!(
-                    "[aerosim.world.link] Created subscriber for topic: {}",
-                    topic
-                ),
-                Err(e) => warn!(
-                    "[aerosim.world.link] Could not create subscriber for topic {}: {:?}",
-                    topic, e
-                ),
-            }
+            let return_status = match subscribe_result {
+                Ok(()) => {
+                    info!(
+                        "[aerosim.world.link] Created subscriber for topic: {}",
+                        topic
+                    );
+                    true
+                }
+                Err(e) => {
+                    warn!(
+                        "[aerosim.world.link] Could not create subscriber for topic {}: {:?}",
+                        topic, e
+                    );
+                    false
+                }
+            };
+            let _ = reply_tx.send(return_status);
         }
 
         match rx_img.try_recv() {

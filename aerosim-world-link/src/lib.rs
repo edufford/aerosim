@@ -137,26 +137,24 @@ pub extern "C" fn notify_scene_graph_loaded() {
 /// The payload is always wrapped as the `JsonData` type regardless of content. For
 /// publishing as a specific registered message type, use `publish_typed_to_topic` instead.
 #[no_mangle]
-pub extern "C" fn publish_to_topic(topic: *const c_char, payload: *const c_char) {
+pub extern "C" fn publish_to_topic(topic: *const c_char, payload: *const c_char) -> bool {
     // Convert the C strings (topic and payload) to Rust strings
     let c_str_topic = unsafe { CStr::from_ptr(topic) };
     let c_str_payload = unsafe { CStr::from_ptr(payload) };
 
     match (c_str_topic.to_str(), c_str_payload.to_str()) {
         (Ok(topic_str), Ok(payload_str)) => {
-            // info!(
-            //     "[aerosim.renderer] Publishing message to topic: {}",
-            //     topic_str
-            // );
             let mut handler = GLOBAL_HANDLER.lock().unwrap();
             if let Some(ref mut handler) = *handler {
-                handler.publish_to_topic(topic_str, payload_str);
+                handler.publish_to_topic(topic_str, payload_str)
             } else {
                 error!("[aerosim.renderer] Message handler has not been initialized.");
+                false
             }
         }
         _ => {
             error!("[aerosim.renderer] Failed to publish message: invalid UTF-8 string.");
+            false
         }
     }
 }
@@ -213,7 +211,7 @@ pub extern "C" fn publish_typed_to_topic(
 }
 
 #[no_mangle]
-pub extern "C" fn publish_image_to_topic(
+pub extern "C" fn publish_image_to_topic_async(
     topic: *const c_char,
     width: i32,
     height: i32,
@@ -235,11 +233,6 @@ pub extern "C" fn publish_image_to_topic(
         }
     };
 
-    // info!(
-    //     "[aerosim.renderer] Publishing message: {} to topic: ",
-    //     topic_str
-    // );
-
     let encoding = match parse_encoding(format) {
         Some(enc) => enc,
         None => {
@@ -247,11 +240,6 @@ pub extern "C" fn publish_image_to_topic(
             return;
         }
     };
-
-    // info!(
-    //     "[aerosim.renderer] Publishing format: {} to topic: ",
-    //     format
-    // );
 
     let image_data = unsafe { slice::from_raw_parts(data as *const u8, data_size) };
 
@@ -285,7 +273,7 @@ pub extern "C" fn publish_image_to_topic(
 
     let mut handler = GLOBAL_HANDLER.lock().unwrap();
     if let Some(ref mut handler) = *handler {
-        handler.publish_image_to_topic(topic_str, image);
+        handler.publish_image_to_topic_async(topic_str, image);
     } else {
         error!("[aerosim.renderer] Message handler has not been initialized.");
     }
@@ -296,14 +284,10 @@ pub extern "C" fn subscribe_to_topic(topic: *const c_char) -> bool {
     let c_str_topic = unsafe { CStr::from_ptr(topic) };
     match c_str_topic.to_str() {
         Ok(topic_str) => {
-            info!(
-                "[aerosim.renderer] Subscribing to topic: {}",
-                topic_str
-            );
+            info!("[aerosim.renderer] Subscribing to topic: {}", topic_str);
             let handler = GLOBAL_HANDLER.lock().unwrap();
             if let Some(ref handler) = *handler {
-                handler.subscribe_to_topic(topic_str);
-                true
+                handler.subscribe_to_topic(topic_str)
             } else {
                 error!("[aerosim.renderer] Message handler has not been initialized.");
                 false
