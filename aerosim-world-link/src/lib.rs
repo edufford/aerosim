@@ -132,6 +132,10 @@ pub extern "C" fn notify_scene_graph_loaded() {
     }
 }
 
+/// Publish a JSON string payload as a generic `JsonData` message to the given topic.
+///
+/// The payload is always wrapped as the `JsonData` type regardless of content. For
+/// publishing as a specific registered message type, use `publish_typed_to_topic` instead.
 #[no_mangle]
 pub extern "C" fn publish_to_topic(topic: *const c_char, payload: *const c_char) {
     // Convert the C strings (topic and payload) to Rust strings
@@ -153,6 +157,57 @@ pub extern "C" fn publish_to_topic(topic: *const c_char, payload: *const c_char)
         }
         _ => {
             error!("[aerosim.renderer] Failed to publish message: invalid UTF-8 string.");
+        }
+    }
+}
+
+/// Publish a JSON payload as a specific registered message type.
+///
+/// Unlike `publish_to_topic` which sends everything as generic `JsonData`, this function
+/// serializes the JSON payload into the wire format of the named `message_type` (e.g.
+/// "VehicleState", "EffectorState") using the TypeRegistry.
+///
+/// - `topic`: The middleware topic to publish to (e.g. "aerosim.actor1.vehicle_state").
+/// - `message_type`: The registered type name (e.g. "VehicleState").
+/// - `payload`: A JSON string matching the schema of the message type.
+/// - `timestamp_sim`: Simulation timestamp in seconds, or negative to omit.
+///
+/// Returns `true` on success, `false` on failure (invalid input, unknown type, or
+/// serialization error).
+#[no_mangle]
+pub extern "C" fn publish_typed_to_topic(
+    topic: *const c_char,
+    message_type: *const c_char,
+    payload: *const c_char,
+    timestamp_sim: f64,
+) -> bool {
+    let c_str_topic = unsafe { CStr::from_ptr(topic) };
+    let c_str_type = unsafe { CStr::from_ptr(message_type) };
+    let c_str_payload = unsafe { CStr::from_ptr(payload) };
+
+    match (
+        c_str_topic.to_str(),
+        c_str_type.to_str(),
+        c_str_payload.to_str(),
+    ) {
+        (Ok(topic_str), Ok(type_str), Ok(payload_str)) => {
+            let handler = GLOBAL_HANDLER.lock().unwrap();
+            if let Some(ref handler) = *handler {
+                // Negative timestamp_sim means no sim timestamp provided
+                let ts = if timestamp_sim >= 0.0 {
+                    Some(timestamp_sim)
+                } else {
+                    None
+                };
+                handler.publish_typed_to_topic(topic_str, type_str, payload_str, ts)
+            } else {
+                error!("[aerosim.renderer] Message handler has not been initialized.");
+                false
+            }
+        }
+        _ => {
+            error!("[aerosim.renderer] Failed to publish typed message: invalid UTF-8 string.");
+            false
         }
     }
 }

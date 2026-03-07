@@ -226,11 +226,81 @@ impl MessageHandler {
         Ok(())
     }
 
+    /// Publish a JSON payload as a `JsonData` message to the given topic.
+    /// The payload is always sent as the generic `JsonData` type regardless of content.
     pub fn publish_to_topic(&self, topic: &str, payload: &str) {
         let payload_json = serde_json::from_str::<serde_json::Value>(payload)
             .expect("Error serializing payload string to JSON.");
         let payload_jsondata = JsonData::new(payload_json);
         futures::executor::block_on(self.transport.publish(topic, &payload_jsondata, None)).ok();
+    }
+
+    /// Publish a JSON payload as a specific registered message type to the given topic.
+    ///
+    /// Unlike `publish_to_topic` which always wraps data as `JsonData`, this method uses
+    /// the `TypeRegistry` to look up the `message_type` by name (e.g. "VehicleState",
+    /// "EffectorState") and serializes the JSON payload into the correct wire format for
+    /// that type. This ensures subscribers receive a properly typed message with matching
+    /// metadata.
+    ///
+    /// - `message_type`: Name of a type registered in the `TypeRegistry`.
+    /// - `payload`: JSON string matching the schema of the given message type.
+    /// - `timestamp_sim`: Optional simulation timestamp in seconds. Pass `None` to omit.
+    ///
+    /// Returns `true` on success, `false` if parsing, type lookup, or serialization fails.
+    pub fn publish_typed_to_topic(
+        &self,
+        topic: &str,
+        message_type: &str,
+        payload: &str,
+        timestamp_sim: Option<f64>,
+    ) -> bool {
+        let data: serde_json::Value = match serde_json::from_str(payload) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(
+                    "[aerosim.renderer.message_handler] Failed to parse JSON payload for topic {}: {:?}",
+                    topic, e
+                );
+                return false;
+            }
+        };
+
+        let Some(typesupport) = TypeRegistry::new().get(message_type) else {
+            warn!(
+                "[aerosim.renderer.message_handler] Unknown message type '{}' for topic: {}",
+                message_type, topic
+            );
+            return false;
+        };
+
+        let sim_ts = timestamp_sim.map(|t| {
+            let sec = t as i32;
+            let nanosec = ((t - t.floor()) * 1_000_000_000.0) as u32;
+            aerosim_data::types::TimeStamp { sec, nanosec }
+        });
+
+        let serializer = self.transport.get_serializer();
+        let metadata = Metadata::new(
+            topic,
+            message_type,
+            sim_ts,
+            Some(aerosim_data::types::TimeStamp::now()),
+        );
+
+        let Some(serialized) = typesupport.from_json(&serializer, &metadata, data) else {
+            warn!(
+                "[aerosim.renderer.message_handler] Failed to serialize type '{}' for topic: {}",
+                message_type, topic
+            );
+            return false;
+        };
+
+        futures::executor::block_on(
+            self.transport.publish_raw(message_type, topic, &serialized),
+        )
+        .ok();
+        true
     }
 
     pub fn publish_image_to_topic(&self, topic: &str, image: Image) {
