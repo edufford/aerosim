@@ -1,7 +1,8 @@
 use crate::{coordinate_system::conversion_utils::*, Ellipsoid};
+use serde::{Deserialize, Serialize};
+
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
-use serde::{Deserialize, Serialize};
 
 #[cfg_attr(feature = "python", pyclass)]
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]

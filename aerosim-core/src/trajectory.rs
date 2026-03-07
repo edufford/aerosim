@@ -7,6 +7,7 @@ use std::{error::Error, io::Write};
 use aerosim_data::types::{ActorState, Pose, Quaternion, TimeStamp, Vector3, VehicleState};
 
 use csv::Reader;
+
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 
