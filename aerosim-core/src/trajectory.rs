@@ -226,8 +226,8 @@ pub fn generate_trajectory(
             let effective_yaw = target_yaw.unwrap_or(0.0);
 
             let target_quat = crate::math::quaternion::Quaternion::from_euler_angles(
-                [effective_roll.to_radians(), effective_pitch, effective_yaw],
-                crate::math::quaternion::RotationType::Extrinsic,
+                [effective_yaw, effective_pitch, effective_roll.to_radians()],
+                crate::math::quaternion::RotationType::Intrinsic,
                 crate::math::quaternion::RotationSequence::ZYX,
             );
 
@@ -247,8 +247,8 @@ pub fn generate_trajectory(
                         math::Vector3::new(nx, ny, nz),
                     );
                     crate::math::quaternion::Quaternion::from_euler_angles(
-                        [0.0, pitch, yaw],
-                        crate::math::quaternion::RotationType::Extrinsic,
+                        [yaw, pitch, 0.0],
+                        crate::math::quaternion::RotationType::Intrinsic,
                         crate::math::quaternion::RotationSequence::ZYX,
                     )
                 } else {
@@ -289,9 +289,9 @@ pub fn generate_trajectory(
                         prev_ori.w, prev_ori.x, prev_ori.y, prev_ori.z,
                     );
                     let prev_roll = quat_prev.to_euler_angles(
-                        crate::math::quaternion::RotationType::Extrinsic,
+                        crate::math::quaternion::RotationType::Intrinsic,
                         crate::math::quaternion::RotationSequence::ZYX,
-                    )[0];
+                    )[2];
                     let roll_diff = computed_roll - prev_roll;
                     let max_roll_inc = max_roll_rate_deg_per_second.to_radians() * time_step;
                     prev_roll
@@ -304,8 +304,8 @@ pub fn generate_trajectory(
                     0.0
                 };
                 let quat = crate::math::quaternion::Quaternion::from_euler_angles(
-                    [roll, pitch, yaw],
-                    crate::math::quaternion::RotationType::Extrinsic,
+                    [yaw, pitch, roll],
+                    crate::math::quaternion::RotationType::Intrinsic,
                     crate::math::quaternion::RotationSequence::ZYX,
                 );
                 Quaternion {
@@ -344,8 +344,8 @@ pub fn generate_trajectory(
                 let effective_pitch = maybe_pitch.unwrap_or(0.0);
                 let effective_yaw = maybe_yaw.unwrap_or(0.0);
                 let quat = crate::math::quaternion::Quaternion::from_euler_angles(
-                    [effective_roll.to_radians(), effective_pitch, effective_yaw],
-                    crate::math::quaternion::RotationType::Extrinsic,
+                    [effective_yaw, effective_pitch, effective_roll.to_radians()],
+                    crate::math::quaternion::RotationType::Intrinsic,
                     crate::math::quaternion::RotationSequence::ZYX,
                 );
                 Quaternion {
@@ -445,8 +445,8 @@ pub fn generate_trajectory_linear(
 
         let (roll, pitch, yaw) = compute_rpy_with_level_roll(start, end);
         let quat = crate::math::quaternion::Quaternion::from_euler_angles(
-            [roll, pitch, yaw],
-            crate::math::quaternion::RotationType::Extrinsic,
+            [yaw, pitch, roll],
+            crate::math::quaternion::RotationType::Intrinsic,
             crate::math::quaternion::RotationSequence::ZYX,
         );
         let orientation = Quaternion {

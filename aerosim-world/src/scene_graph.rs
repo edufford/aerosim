@@ -214,11 +214,11 @@ impl SceneGraph {
 
             let actor_quat = aerosim_core::math::quaternion::Quaternion::from_euler_angles(
                 [
-                    actor_rotation[0].as_f64().unwrap().to_radians(),
-                    actor_rotation[1].as_f64().unwrap().to_radians(),
-                    actor_rotation[2].as_f64().unwrap().to_radians(),
+                    actor_rotation[2].as_f64().unwrap().to_radians(), // yaw
+                    actor_rotation[1].as_f64().unwrap().to_radians(), // pitch
+                    actor_rotation[0].as_f64().unwrap().to_radians(), // roll
                 ],
-                aerosim_core::math::quaternion::RotationType::Extrinsic,
+                aerosim_core::math::quaternion::RotationType::Intrinsic,
                 aerosim_core::math::quaternion::RotationSequence::ZYX,
             );
 
@@ -314,11 +314,11 @@ impl SceneGraph {
                     let effector_quat =
                         aerosim_core::math::quaternion::Quaternion::from_euler_angles(
                             [
-                                effector_rotation[0].as_f64().unwrap().to_radians(),
-                                effector_rotation[1].as_f64().unwrap().to_radians(),
-                                effector_rotation[2].as_f64().unwrap().to_radians(),
+                                effector_rotation[2].as_f64().unwrap().to_radians(), // yaw
+                                effector_rotation[1].as_f64().unwrap().to_radians(), // pitch
+                                effector_rotation[0].as_f64().unwrap().to_radians(), // roll
                             ],
-                            aerosim_core::math::quaternion::RotationType::Extrinsic,
+                            aerosim_core::math::quaternion::RotationType::Intrinsic,
                             aerosim_core::math::quaternion::RotationSequence::ZYX,
                         );
 
@@ -462,11 +462,11 @@ impl SceneGraph {
 
             let sensor_quat = aerosim_core::math::quaternion::Quaternion::from_euler_angles(
                 [
-                    sensor_rotation[0].as_f64().unwrap().to_radians(),
-                    sensor_rotation[1].as_f64().unwrap().to_radians(),
-                    sensor_rotation[2].as_f64().unwrap().to_radians(),
+                    sensor_rotation[2].as_f64().unwrap().to_radians(), // yaw
+                    sensor_rotation[1].as_f64().unwrap().to_radians(), // pitch
+                    sensor_rotation[0].as_f64().unwrap().to_radians(), // roll
                 ],
-                aerosim_core::math::quaternion::RotationType::Extrinsic,
+                aerosim_core::math::quaternion::RotationType::Intrinsic,
                 aerosim_core::math::quaternion::RotationSequence::ZYX,
             );
 
