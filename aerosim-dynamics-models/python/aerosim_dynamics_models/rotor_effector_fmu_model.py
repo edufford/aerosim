@@ -115,8 +115,8 @@ class rotor_effector_fmu_model(Fmi3Slave):
                     self.pitch + math.tau
                 ) % math.tau  # Convert to 0-2pi range
 
-        # Convert RPY to Quaternion
-        rotation = Rotation.from_euler("zyx", [self.roll, self.pitch, self.yaw])
+        # Convert RPY to Quaternion using intrinsic ZYX (aerospace Tait-Bryan)
+        rotation = Rotation.from_euler("ZYX", [self.yaw, self.pitch, self.roll])
         q_w, q_x, q_y, q_z = rotation.as_quat(scalar_first=True)
         self.effector_state.pose.orientation.w = q_w
         self.effector_state.pose.orientation.x = q_x

@@ -380,7 +380,7 @@ pub extern "C" fn aerosim_quat_wxyz_to_rpy(
 ) {
     let quat_data = aerosim_data::types::Quaternion::new(w, x, y, z);
     let q = Quaternion::from_quaternion_data(quat_data);
-    let [roll, pitch, yaw] = q.to_euler_angles(RotationType::Extrinsic, RotationSequence::ZYX);
+    let [yaw, pitch, roll] = q.to_euler_angles(RotationType::Intrinsic, RotationSequence::ZYX);
     unsafe {
         *out_roll = roll;
         *out_pitch = pitch;

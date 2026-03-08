@@ -347,7 +347,7 @@ Finally, we implement the `do_step(...)` method, which is executed every time th
             two_pi = 2.0 * math.pi
             yaw = (self.yaw/360 + two_pi) % two_pi  # Convert to 0-2pi range
 
-            rotation = Rotation.from_euler("zyx", [0.0, 0.0, yaw])
+            rotation = Rotation.from_euler("ZYX", [yaw, 0.0, 0.0])
             q_w, q_x, q_y, q_z = rotation.as_quat(scalar_first=True)
 
             self.vehicle_state.state.pose.orientation.w = q_w

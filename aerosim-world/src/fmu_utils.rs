@@ -10,6 +10,7 @@ use fmi::schema::fmi3::ArrayableVariableTrait;
 use fmi::traits::FmiImport;
 use std::ffi::CString;
 
+use aerosim_core::math::quaternion::{Quaternion, RotationType, RotationSequence};
 use aerosim_data::{
     middleware::{Metadata, Middleware, MiddlewareEnum, MiddlewareRaw, Serializer, SerializerEnum},
     types::{
@@ -819,6 +820,51 @@ pub fn set_json_from_fmu3(
     }
 }
 
+/// Fix quaternion fields in a JSON message from an FMU that uses the old Extrinsic ZYX
+/// convention (where `from_euler_angles([r,p,y], Extrinsic, ZYX)` maps array index [2]
+/// to X-axis rotation, swapping roll and yaw).
+///
+/// This decomposes the quaternion using the old convention to recover the swapped RPY,
+/// then recomposes with the correct Intrinsic ZYX convention.
+fn fix_extrinsic_zyx_quaternion(json: &mut Value, quat_path_prefix: &str) {
+    let w_path = format!("{}/w", quat_path_prefix);
+    let x_path = format!("{}/x", quat_path_prefix);
+    let y_path = format!("{}/y", quat_path_prefix);
+    let z_path = format!("{}/z", quat_path_prefix);
+
+    let w = json.pointer(&w_path).and_then(|v| v.as_f64()).unwrap_or(1.0);
+    let x = json.pointer(&x_path).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let y = json.pointer(&y_path).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let z = json.pointer(&z_path).and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+    // Skip identity quaternions (no correction needed)
+    if (w - 1.0).abs() < 1e-10 && x.abs() < 1e-10 && y.abs() < 1e-10 && z.abs() < 1e-10 {
+        return;
+    }
+
+    let quat_data = aerosim_data::types::Quaternion::new(w, x, y, z);
+    let q = Quaternion::from_quaternion_data(quat_data);
+
+    // Decompose using the OLD (wrong) Extrinsic ZYX convention.
+    // This returns [Z, Y, X] which the old code destructured as [roll, pitch, yaw],
+    // effectively swapping roll and yaw.
+    let [old_roll, old_pitch, old_yaw] =
+        q.to_euler_angles(RotationType::Extrinsic, RotationSequence::ZYX);
+
+    // Recompose using the CORRECT Intrinsic ZYX convention with the same
+    // swapped values. Since the old code treated index [0] as roll and [2] as yaw,
+    // we pass them in the correct [yaw, pitch, roll] order for Intrinsic ZYX.
+    let fixed_q = Quaternion::from_euler_angles(
+        [old_yaw, old_pitch, old_roll],
+        RotationType::Intrinsic,
+        RotationSequence::ZYX,
+    );
+    if let Some(v) = json.pointer_mut(&w_path) { *v = Value::from(fixed_q.w()); }
+    if let Some(v) = json.pointer_mut(&x_path) { *v = Value::from(fixed_q.x()); }
+    if let Some(v) = json.pointer_mut(&y_path) { *v = Value::from(fixed_q.y()); }
+    if let Some(v) = json.pointer_mut(&z_path) { *v = Value::from(fixed_q.z()); }
+}
+
 pub async fn publish_component_output_topics_fmu3(
     fmu_id: &str,
     fmu_config_json: &serde_json::Value,
@@ -856,23 +902,33 @@ pub async fn publish_component_output_topics_fmu3(
 
             let metadata = Metadata::new(out_topic, msg_type, Some(*timestamp), None);
 
+            // Check if this FMU uses the old Extrinsic ZYX quaternion convention
+            let fix_quat = fmu_config_json
+                .get("fix_quaternion_convention")
+                .and_then(|v| v.as_str())
+                == Some("extrinsic_zyx");
+
             let serialized_msg: Vec<u8> = match msg_type {
-                "aerosim::types::VehicleState" => pack_raw_aerosim_fmu_msg::<VehicleState>(
-                    fmu_id,
-                    &var_prefix,
-                    fmu_model_var_info,
-                    fmu_instance,
-                    serializer,
-                    &metadata,
-                ),
-                "aerosim::types::EffectorState" => pack_raw_aerosim_fmu_msg::<EffectorState>(
-                    fmu_id,
-                    &var_prefix,
-                    fmu_model_var_info,
-                    fmu_instance,
-                    serializer,
-                    &metadata,
-                ),
+                "aerosim::types::VehicleState" => {
+                    let mut json = build_fmu_output_json::<VehicleState>(
+                        fmu_id, &var_prefix, fmu_model_var_info, fmu_instance,
+                    );
+                    if fix_quat {
+                        fix_extrinsic_zyx_quaternion(&mut json, "/state/pose/orientation");
+                    }
+                    serializer.from_json::<VehicleState>(&metadata, json)
+                        .expect("Unable to serialize VehicleState from JSON")
+                }
+                "aerosim::types::EffectorState" => {
+                    let mut json = build_fmu_output_json::<EffectorState>(
+                        fmu_id, &var_prefix, fmu_model_var_info, fmu_instance,
+                    );
+                    if fix_quat {
+                        fix_extrinsic_zyx_quaternion(&mut json, "/pose/orientation");
+                    }
+                    serializer.from_json::<EffectorState>(&metadata, json)
+                        .expect("Unable to serialize EffectorState from JSON")
+                }
                 "aerosim::types::AutopilotCommand" => pack_raw_aerosim_fmu_msg::<AutopilotCommand>(
                     fmu_id,
                     &var_prefix,
@@ -963,14 +1019,13 @@ pub async fn publish_component_output_topics_fmu3(
     }
 }
 
-pub fn pack_raw_aerosim_fmu_msg<T: AerosimMessage + Default>(
+/// Build a JSON object from FMU output variables for the given message type.
+pub fn build_fmu_output_json<T: AerosimMessage + Default>(
     fmu_id: &str,
     var_prefix: &str,
     fmu_model_var_info: &Fmi3ModelVarInfo,
     fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
-    serializer: &SerializerEnum,
-    metadata: &Metadata,
-) -> Vec<u8> {
+) -> Value {
     // Create a new instance of the aerosim message struct with default values
     let msg_struct = T::default();
 
@@ -994,6 +1049,24 @@ pub fn pack_raw_aerosim_fmu_msg<T: AerosimMessage + Default>(
             true,
         );
     }
+
+    out_msg_json
+}
+
+pub fn pack_raw_aerosim_fmu_msg<T: AerosimMessage + Default>(
+    fmu_id: &str,
+    var_prefix: &str,
+    fmu_model_var_info: &Fmi3ModelVarInfo,
+    fmu_instance: &mut fmi::fmi3::instance::InstanceCS,
+    serializer: &SerializerEnum,
+    metadata: &Metadata,
+) -> Vec<u8> {
+    let out_msg_json = build_fmu_output_json::<T>(
+        fmu_id,
+        var_prefix,
+        fmu_model_var_info,
+        fmu_instance,
+    );
 
     // Return the serialized raw aerosim message from the JSON object
     serializer

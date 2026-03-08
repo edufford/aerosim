@@ -57,9 +57,9 @@ class effector:
                 self.yaw_deg + math.tau
             ) % math.tau  # Convert to 0-2pi range
 
-        # Convert RPY to Quaternion
+        # Convert RPY to Quaternion using intrinsic ZYX (aerospace Tait-Bryan)
         rotation = Rotation.from_euler(
-            "zyx", [self.roll_deg, self.pitch_deg, self.yaw_deg]
+            "ZYX", [self.yaw_deg, self.pitch_deg, self.roll_deg]
         )
         q_w, q_x, q_y, q_z = rotation.as_quat(scalar_first=True)
         self.effector_state.pose.orientation.w = q_w
