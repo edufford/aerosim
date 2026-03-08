@@ -50,10 +50,9 @@ struct EffectorState {
   Pose pose;
 };
 
-// Converts Euler angles to Quaternion matching scipy's from_euler("zyx", ...).
-// In scipy's convention: "zyx" with [a, b, c] means rotate by 'a' around Z,
-// then 'b' around Y, then 'c' around X.
-// So: roll->Z rotation, pitch->Y rotation, yaw->X rotation.
+// Converts Euler angles to Quaternion using intrinsic ZYX (Tait-Bryan) convention.
+// Arguments are the rotation angles for each axis: z_angle (yaw), y_angle (pitch),
+// x_angle (roll). Produces Q = Qz(yaw) * Qy(pitch) * Qx(roll).
 // Input angles are in radians.
 Quaternion EulerToQuaternion(double z_angle, double y_angle, double x_angle) {
   // ZYX intrinsic rotation: first Z, then Y, then X
@@ -115,8 +114,8 @@ class Effector {
         break;
     }
 
-    // Convert RPY to Quaternion (angles are in radians)
-    state_.pose.orientation = EulerToQuaternion(roll_rad_, pitch_rad_, yaw_rad_);
+    // Convert RPY to Quaternion using intrinsic ZYX: EulerToQuaternion(yaw, pitch, roll)
+    state_.pose.orientation = EulerToQuaternion(yaw_rad_, pitch_rad_, roll_rad_);
   }
 
   const EffectorState& GetState() const { return state_; }

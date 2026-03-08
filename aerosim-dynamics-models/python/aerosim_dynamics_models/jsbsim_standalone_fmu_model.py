@@ -89,8 +89,8 @@ class jsbsim_standalone_fmu_model(Fmi3Slave):
         two_pi = 2.0 * math.pi
         yaw = (yaw + two_pi) % two_pi  # Convert to 0-2pi range
 
-        # Orientation in world NED frame
-        rotation = Rotation.from_euler("zyx", [roll, pitch, yaw])
+        # Orientation in world NED frame (intrinsic ZYX / aerospace Tait-Bryan)
+        rotation = Rotation.from_euler("ZYX", [yaw, pitch, roll])
         q_w, q_x, q_y, q_z = rotation.as_quat(scalar_first=True)
         self.vehicle_state.state.pose.orientation.w = q_w
         self.vehicle_state.state.pose.orientation.x = q_x

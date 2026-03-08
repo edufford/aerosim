@@ -269,7 +269,7 @@ We need a function to convert the JSBSim flight parameters into position, post a
         two_pi = 2.0 * math.pi
         yaw = (yaw + two_pi) % two_pi  # Convert to 0-2pi range
 
-        rotation = Rotation.from_euler("zyx", [roll, pitch, yaw])
+        rotation = Rotation.from_euler("ZYX", [yaw, pitch, roll])
         q_w, q_x, q_y, q_z = rotation.as_quat(scalar_first=True)
         self.vehicle_state.state.pose.orientation.w = q_w
         self.vehicle_state.state.pose.orientation.x = q_x

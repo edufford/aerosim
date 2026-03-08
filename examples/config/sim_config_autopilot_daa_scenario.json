@@ -531,6 +531,7 @@
         {
             "id": "evtol_vehicle",
             "fmu_model_path": "examples/fmu/evtol_vehicle_fmu.fmu",
+            "fix_quaternion_convention": "extrinsic_zyx",
             "step_trigger_topic": {
                 "msg_type": "aerosim::types::JsonData",
                 "topic": "aerosim.clock.tick_group_01"
