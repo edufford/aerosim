@@ -11,6 +11,16 @@ use crate::middleware::{
     CallbackClosureRaw, Middleware, MiddlewareRaw, Serializer, SerializerEnum,
 };
 
+/// Convert a dot-separated topic to a slash-separated Zenoh key expression.
+/// This allows Zenoh wildcard matching (e.g. `aerosim/**`) to work correctly,
+/// since Zenoh uses `/` as the key expression separator.
+/// Kafka topics use `.` which is incompatible with `/`, so the translation
+/// is done at the Zenoh middleware boundary to keep the rest of the codebase
+/// using a single dot-separated topic format.
+fn topic_to_zenoh_key(topic: &str) -> String {
+    topic.replace('.', "/")
+}
+
 #[cfg(feature = "python")]
 use {
     crate::middleware::{Metadata, PyMiddleware, PySerializer},
@@ -100,8 +110,9 @@ impl MiddlewareRaw for ZenohMiddleware {
             })
             .await;
 
+        let key = topic_to_zenoh_key(topic);
         session
-            .put(topic, payload)
+            .put(&key, payload)
             .congestion_control(zenoh::qos::CongestionControl::Block)
             .await
             .map_err(|e| -> Box<dyn Error> {
@@ -126,11 +137,12 @@ impl MiddlewareRaw for ZenohMiddleware {
             })
             .await;
 
+        let key = topic_to_zenoh_key(topic);
         let subscriber = session
-            .declare_subscriber(topic)
+            .declare_subscriber(&key)
             .await
             .map_err(|e| -> Box<dyn Error> {
-                format!("Failed to subscribe to topic '{}': {}", topic, e).into()
+                format!("Failed to subscribe to topic '{}' (key '{}'): {}", topic, key, e).into()
             })?;
 
         let handle = tokio::task::spawn(async move {
@@ -162,10 +174,11 @@ impl MiddlewareRaw for ZenohMiddleware {
         let callback_arc = Arc::new(callback);
 
         for (_message_type, topic) in topics {
-            let subscriber = match session.declare_subscriber(&topic).await {
+            let key = topic_to_zenoh_key(&topic);
+            let subscriber = match session.declare_subscriber(&key).await {
                 Ok(sub) => sub,
                 Err(e) => {
-                    log::error!("Failed to subscribe to topic '{}': {}", topic, e);
+                    log::error!("Failed to subscribe to topic '{}' (key '{}'): {}", topic, key, e);
                     continue;
                 }
             };
@@ -413,6 +426,15 @@ mod tests {
         id: u32,
         name: String,
         value: f64,
+    }
+
+    #[test]
+    fn test_topic_to_zenoh_key() {
+        assert_eq!(topic_to_zenoh_key("aerosim.clock.tick_group_01"), "aerosim/clock/tick_group_01");
+        assert_eq!(topic_to_zenoh_key("aerosim.actor1.vehicle_state"), "aerosim/actor1/vehicle_state");
+        assert_eq!(topic_to_zenoh_key("aerosim.**"), "aerosim/**");
+        assert_eq!(topic_to_zenoh_key("aerosim.*.vehicle_state"), "aerosim/*/vehicle_state");
+        assert_eq!(topic_to_zenoh_key("no_dots"), "no_dots");
     }
 
     #[test]
