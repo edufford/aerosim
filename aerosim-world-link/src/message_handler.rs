@@ -762,9 +762,11 @@ fn handle_raw_topic_message(
     let timestamp_sim_f64: f64 =
         metadata.timestamp_sim.sec as f64 + metadata.timestamp_sim.nanosec as f64 / 1_000_000_000.0;
 
-    // Wrap the data with topic and type metadata so the consumer can distinguish messages
+    // Wrap the data with topic and type metadata so the consumer can distinguish messages.
+    // Use metadata.topic (the actual published topic) rather than the subscription key
+    // expression, which may be a wildcard pattern like "aerosim.**".
     let envelope = json!({
-        "topic": topic,
+        "topic": metadata.topic,
         "message_type": metadata.type_name,
         "timestamp_sim": {
             "sec": metadata.timestamp_sim.sec,
