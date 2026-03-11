@@ -126,7 +126,12 @@ impl MiddlewareRaw for ZenohMiddleware {
             })
             .await;
 
-        let subscriber = session.declare_subscriber(topic).await.unwrap();
+        let subscriber = session
+            .declare_subscriber(topic)
+            .await
+            .map_err(|e| -> Box<dyn Error> {
+                format!("Failed to subscribe to topic '{}': {}", topic, e).into()
+            })?;
 
         let handle = tokio::task::spawn(async move {
             while let Ok(sample) = subscriber.recv_async().await {
@@ -157,7 +162,13 @@ impl MiddlewareRaw for ZenohMiddleware {
         let callback_arc = Arc::new(callback);
 
         for (_message_type, topic) in topics {
-            let subscriber = session.declare_subscriber(&topic).await.unwrap();
+            let subscriber = match session.declare_subscriber(&topic).await {
+                Ok(sub) => sub,
+                Err(e) => {
+                    log::error!("Failed to subscribe to topic '{}': {}", topic, e);
+                    continue;
+                }
+            };
             let callback_clone = Arc::clone(&callback_arc);
             let handle = tokio::task::spawn(async move {
                 while let Ok(sample) = subscriber.recv_async().await {
