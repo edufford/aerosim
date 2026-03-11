@@ -4,7 +4,7 @@ use std::thread;
 use std::vec;
 use std::{cmp::Ordering, collections::BinaryHeap};
 
-use log::{info, warn};
+use log::{error, info, warn};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::mpsc::error::TryRecvError;
@@ -220,9 +220,12 @@ impl MessageHandler {
             .take()
             .expect("No message thread handle, was it started?");
 
-        handle
-            .join()
-            .expect("Thread should have stopped after receiving stop flag.");
+        if let Err(e) = handle.join() {
+            error!(
+                "[aerosim.renderer.message_handler] Message thread panicked during shutdown: {:?}",
+                e
+            );
+        }
 
         self.transport.shutdown();
 
